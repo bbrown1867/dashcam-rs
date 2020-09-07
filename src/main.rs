@@ -1,13 +1,17 @@
 #![no_main]
 #![no_std]
 
-use cortex_m_rt::entry;
 use core::panic::PanicInfo;
+use cortex_m_rt::entry;
 use rtt_target::{rprintln, rtt_init_print};
-use stm32f7xx_hal::{delay::Delay, pac::{self, RCC}, prelude::*};
 use stm32f7xx_hal::gpio::Speed;
-use stm32f7xx_hal::rcc::{HSEClock, HSEClockMode};
 use stm32f7xx_hal::i2c::{BlockingI2c, Mode};
+use stm32f7xx_hal::rcc::{HSEClock, HSEClockMode};
+use stm32f7xx_hal::{
+    delay::Delay,
+    pac::{self, RCC},
+    prelude::*,
+};
 
 #[entry]
 fn main() -> ! {
@@ -52,7 +56,14 @@ fn main() -> ! {
 
     rprintln!("About to init I2C!\r\n");
 
-    let mut i2c = BlockingI2c::i2c1(pac_periph.I2C1, (scl, sda), Mode::fast(400.khz()), clocks, &mut rcc.apb1, 10000);
+    let mut i2c = BlockingI2c::i2c1(
+        pac_periph.I2C1,
+        (scl, sda),
+        Mode::fast(400.khz()),
+        clocks,
+        &mut rcc.apb1,
+        10000,
+    );
 
     rprintln!("init I2C!\r\n");
 
@@ -94,6 +105,5 @@ fn main() -> ! {
 fn panic(_info: &PanicInfo) -> ! {
     rprintln!("Panicked!\r\n");
     rprintln!("{:?}", _info);
-    loop {
-    }
+    loop {}
 }
