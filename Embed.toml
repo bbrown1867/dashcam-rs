@@ -1,0 +1,23 @@
+[default.general]
+chip = "STM32F767ZITx"
+
+[default.probe]
+protocol = "SWD"
+
+[default.flashing]
+# Whether or not the target should be flashed.
+enabled = true
+
+[default.reset]
+enabled = true
+halt_afterwards = false
+
+[default.rtt]
+# Whether or not an RTTUI should be opened after flashing.
+# This is exclusive and cannot be used with GDB at the moment.
+enabled = true
+
+[default.gdb]
+# Whether or not a GDB server should be opened after flashing.
+# This is exclusive and cannot be used with RTT at the moment.
+enabled = false
