@@ -4,13 +4,13 @@
 use core::panic::PanicInfo;
 use cortex_m_rt::entry;
 use rtt_target::{rprintln, rtt_init_print};
-use stm32f7xx_hal::gpio::Speed;
-use stm32f7xx_hal::i2c::{BlockingI2c, Mode};
-use stm32f7xx_hal::rcc::{HSEClock, HSEClockMode};
 use stm32f7xx_hal::{
     delay::Delay,
+    gpio::Speed,
+    i2c::{BlockingI2c, Mode},
     pac::{self, RCC},
     prelude::*,
+    rcc::{HSEClock, HSEClockMode},
 };
 
 #[entry]
@@ -54,18 +54,18 @@ fn main() -> ! {
         .internal_pull_up(true)
         .set_open_drain();
 
-    rprintln!("About to init I2C!\r\n");
+    rprintln!("Initializing I2C...\r\n");
 
     let mut i2c = BlockingI2c::i2c1(
         pac_periph.I2C1,
         (scl, sda),
-        Mode::fast(400.khz()),
+        Mode::fast(200.khz()),
         clocks,
         &mut rcc.apb1,
         10000,
     );
 
-    rprintln!("init I2C!\r\n");
+    rprintln!("I2C initialization complete!\r\n");
 
     // Writing 0x80 to register 0x12 resets all registers
     i2c.write(0x60, &[0x12, 0x80]).unwrap();
