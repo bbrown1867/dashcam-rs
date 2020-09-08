@@ -1,3 +1,7 @@
+//! I2C1 SCL: PB8  --> Nucleo CN7.2 (D15)  --> OV9655 SIOC
+//! I2C1 SDA: PB9 <--> Nucleo CN7.4 (D14) <--> OV9655 SIOD
+//! MCO2:     PC9  --> Nucleo CN8.4 (D44)  --> OV9655 XCLK
+
 #![no_main]
 #![no_std]
 
@@ -15,6 +19,11 @@ use stm32f7xx_hal::{
     prelude::*,
     rcc::{HSEClock, HSEClockMode},
 };
+
+// Device address for writes is 0x60 and reads is 0x61, however the STM32F7 HAL I2C driver will
+// left-shift the provided address by 1. Also reads (0x61) is never used, because even register
+// reads require writing the address of the register we wish to read.
+const OV9655_SLAVE_ADDRESS: u8 = 0x30;
 
 #[entry]
 fn main() -> ! {
@@ -103,7 +112,7 @@ fn sccb_reg_read(
 ) -> u8 {
     let buf1 = [reg, 0x00];
     let mut buf2 = [0x00, 0x00];
-    match i2c.write_read(0x60, &buf1, &mut buf2) {
+    match i2c.write_read(OV9655_SLAVE_ADDRESS, &buf1, &mut buf2) {
         Ok(_) => rprintln!("SCCB register read {:#x} = {:#x} passed.\r\n", reg, buf2[1]),
         Err(e) => rprintln!("SCCB register read failed with error code {:?}.\r\n", e),
     };
@@ -117,7 +126,7 @@ fn sccb_reg_write(
     val: u8,
 ) {
     let buf = [reg, val];
-    match i2c.write(0x60, &buf) {
+    match i2c.write(OV9655_SLAVE_ADDRESS, &buf) {
         Ok(_) => rprintln!("SCCB register write {:#x} = {:#x} passed.\r\n", reg, val),
         Err(e) => rprintln!("SCCB register write failed with error code {:?}.\r\n", e),
     };
