@@ -7,7 +7,7 @@
 
 use core::panic::PanicInfo;
 use cortex_m_rt::entry;
-use rtt_target::{rprintln, rtt_init_print};
+use rtt_target::{rprintln, rtt_init, set_print_channel};
 use stm32f7xx_hal::{
     delay::Delay,
     gpio::{
@@ -27,7 +27,17 @@ const OV9655_SLAVE_ADDRESS: u8 = 0x30;
 
 #[entry]
 fn main() -> ! {
-    rtt_init_print!();
+    let channels = rtt_init! {
+        up: {
+            0: { // channel number
+                size: 4096 // buffer size in bytes
+                mode: BlockIfFull // mode (optional, default: NoBlockSkip, see enum ChannelMode)
+                name: "Terminal" // name (optional, default: no name)
+            }
+        }
+    };
+
+    set_print_channel(channels.up.0);
 
     let pac_periph = pac::Peripherals::take().unwrap();
     let cm_periph = cortex_m::Peripherals::take().unwrap();
@@ -66,40 +76,38 @@ fn main() -> ! {
         .internal_pull_up(true)
         .set_open_drain();
 
-    rprintln!("Initializing I2C...\r\n");
+    rprintln!("Initializing I2C...");
 
     let mut i2c = BlockingI2c::i2c1(
         pac_periph.I2C1,
         (scl, sda),
-        Mode::standard(200.khz()),
+        Mode::standard(100.khz()),
         clocks,
         &mut rcc.apb1,
         10000,
     );
 
-    rprintln!("I2C initialization complete!\r\n");
+    rprintln!("I2C initialization complete!");
 
-    // Writing 0x80 to register 0x12 resets all registers
+    // OV9655: Reset all registers
     sccb_reg_write(&mut i2c, 0x12, 0x80);
-    rprintln!("Reset OV9655!\r\n");
-    delay.delay_ms(500_u16);
+    rprintln!("OV9655 reset complete!");
+    delay.delay_ms(1000_u16);
 
-    // Read ID
-    let val = sccb_reg_read(&mut i2c, 0x1C);
-    rprintln!("Read ID MIDH = {:#x}\r\n", val);
-    delay.delay_ms(500_u16);
+    // OV9655: Read ID
+    let manf_id_msb: u16 = sccb_reg_read(&mut i2c, 0x1C).into();
+    let manf_id_lsb: u16 = sccb_reg_read(&mut i2c, 0x1D).into();
+    let manf_id: u16 = (manf_id_msb << 8) | manf_id_lsb;
+    rprintln!("OV9655 Manf ID = {:#x}", manf_id);
 
-    let val = sccb_reg_read(&mut i2c, 0x1D);
-    rprintln!("Read ID MIDL = {:#x}\r\n", val);
-    delay.delay_ms(500_u16);
+    let product_id_msb: u16 = sccb_reg_read(&mut i2c, 0x0A).into();
+    let product_id_lsb: u16 = sccb_reg_read(&mut i2c, 0x0B).into();
+    let product_id: u16 = (product_id_msb << 8) | product_id_lsb;
+    rprintln!("OV9655 Product ID = {:#x}", product_id);
 
-    let val = sccb_reg_read(&mut i2c, 0x0B);
-    rprintln!("Read ID Ver = {:#x}\r\n", val);
-    delay.delay_ms(500_u16);
-
-    let val = sccb_reg_read(&mut i2c, 0x0A);
-    rprintln!("Read ID PID = {:#x}\r\n", val);
-    delay.delay_ms(500_u16);
+    for reg in 0x0..0x0B {
+        sccb_reg_read(&mut i2c, reg);
+    }
 
     loop {
         delay.delay_ms(500_u16);
@@ -113,8 +121,8 @@ fn sccb_reg_read(
     let buf1 = [reg, 0x00];
     let mut buf2 = [0x00, 0x00];
     match i2c.write_read(OV9655_SLAVE_ADDRESS, &buf1, &mut buf2) {
-        Ok(_) => rprintln!("SCCB register read {:#x} = {:#x} passed.\r\n", reg, buf2[1]),
-        Err(e) => rprintln!("SCCB register read failed with error code {:?}.\r\n", e),
+        Ok(_) => rprintln!("SCCB register read {:#x} = {:#x} passed.", reg, buf2[1]),
+        Err(e) => rprintln!("SCCB register read failed with error code {:?}.", e),
     };
 
     buf2[1]
@@ -127,15 +135,15 @@ fn sccb_reg_write(
 ) {
     let buf = [reg, val];
     match i2c.write(OV9655_SLAVE_ADDRESS, &buf) {
-        Ok(_) => rprintln!("SCCB register write {:#x} = {:#x} passed.\r\n", reg, val),
-        Err(e) => rprintln!("SCCB register write failed with error code {:?}.\r\n", e),
+        Ok(_) => rprintln!("SCCB register write {:#x} = {:#x} passed.", reg, val),
+        Err(e) => rprintln!("SCCB register write failed with error code {:?}.", e),
     };
 }
 
 #[inline(never)]
 #[panic_handler]
 fn panic(_info: &PanicInfo) -> ! {
-    rprintln!("Panicked!\r\n");
+    rprintln!("Panicked!");
     rprintln!("{:?}", _info);
     loop {}
 }
