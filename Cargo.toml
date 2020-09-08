@@ -18,5 +18,4 @@ stm32f7xx-hal = { path = "../stm32f7xx-hal", features = ["rt", "stm32f767"] }
 nucleof767zi-rs = { git = "https://github.com/bbrown1867/nucleof767zi-rs" }
 
 # Runtime support
-# panic-halt = "0.2.0"
 rtt-target = { version = "0.2.2", features = ["cortex-m"] }

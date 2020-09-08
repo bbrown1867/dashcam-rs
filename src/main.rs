@@ -6,9 +6,12 @@ use cortex_m_rt::entry;
 use rtt_target::{rprintln, rtt_init_print};
 use stm32f7xx_hal::{
     delay::Delay,
-    gpio::Speed,
+    gpio::{
+        gpiob::{PB8, PB9},
+        Alternate, Speed, AF4,
+    },
     i2c::{BlockingI2c, Mode},
-    pac::{self, RCC},
+    pac::{self, I2C1, RCC},
     prelude::*,
     rcc::{HSEClock, HSEClockMode},
 };
@@ -59,7 +62,7 @@ fn main() -> ! {
     let mut i2c = BlockingI2c::i2c1(
         pac_periph.I2C1,
         (scl, sda),
-        Mode::fast(200.khz()),
+        Mode::standard(200.khz()),
         clocks,
         &mut rcc.apb1,
         10000,
@@ -68,36 +71,56 @@ fn main() -> ! {
     rprintln!("I2C initialization complete!\r\n");
 
     // Writing 0x80 to register 0x12 resets all registers
-    i2c.write(0x60, &[0x12, 0x80]).unwrap();
+    sccb_reg_write(&mut i2c, 0x12, 0x80);
     rprintln!("Reset OV9655!\r\n");
     delay.delay_ms(500_u16);
 
     // Read ID
-    let buf: &mut [u8] = &mut [0x00, 0x00];
-
-    i2c.write_read(0x60, &[0x1C, 0x00], buf).unwrap();
-    rprintln!("Read ID MIDH = {}", buf[1]);
+    let val = sccb_reg_read(&mut i2c, 0x1C);
+    rprintln!("Read ID MIDH = {:#x}\r\n", val);
     delay.delay_ms(500_u16);
 
-    i2c.write_read(0x60, &[0x1D, 0x00], buf).unwrap();
-    rprintln!("Read ID MIDL = {}", buf[1]);
+    let val = sccb_reg_read(&mut i2c, 0x1D);
+    rprintln!("Read ID MIDL = {:#x}\r\n", val);
     delay.delay_ms(500_u16);
 
-    i2c.write_read(0x60, &[0x0B, 0x00], buf).unwrap();
-    rprintln!("Read ID Ver = {}", buf[1]);
+    let val = sccb_reg_read(&mut i2c, 0x0B);
+    rprintln!("Read ID Ver = {:#x}\r\n", val);
     delay.delay_ms(500_u16);
 
-    i2c.write_read(0x60, &[0x0B, 0x00], buf).unwrap();
-    rprintln!("Read ID Ver = {}", buf[1]);
-    delay.delay_ms(500_u16);
-
-    i2c.write_read(0x60, &[0x0A, 0x00], buf).unwrap();
-    rprintln!("Read ID PID = {}", buf[1]);
+    let val = sccb_reg_read(&mut i2c, 0x0A);
+    rprintln!("Read ID PID = {:#x}\r\n", val);
     delay.delay_ms(500_u16);
 
     loop {
         delay.delay_ms(500_u16);
     }
+}
+
+fn sccb_reg_read(
+    i2c: &mut BlockingI2c<I2C1, PB8<Alternate<AF4>>, PB9<Alternate<AF4>>>,
+    reg: u8,
+) -> u8 {
+    let buf1 = [reg, 0x00];
+    let mut buf2 = [0x00, 0x00];
+    match i2c.write_read(0x60, &buf1, &mut buf2) {
+        Ok(_) => rprintln!("SCCB register read {:#x} = {:#x} passed.\r\n", reg, buf2[1]),
+        Err(e) => rprintln!("SCCB register read failed with error code {:?}.\r\n", e),
+    };
+
+    buf2[1]
+}
+
+fn sccb_reg_write(
+    i2c: &mut BlockingI2c<I2C1, PB8<Alternate<AF4>>, PB9<Alternate<AF4>>>,
+    reg: u8,
+    val: u8,
+) {
+    let buf = [reg, val];
+    match i2c.write(0x60, &buf) {
+        Ok(_) => rprintln!("SCCB register write {:#x} = {:#x} passed.\r\n", reg, val),
+        Err(e) => rprintln!("SCCB register write failed with error code {:?}.\r\n", e),
+    };
 }
 
 #[inline(never)]
