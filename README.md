@@ -46,13 +46,14 @@ The conceptual design is shown the diagram below. The image data path is shown o
 
 ### Constraints
 1. The dash cam shall use an STM32F767ZI microcontroller for all processing.
-    * Rationale: I already own this hardware and have experience using it.
+    * Rationale: I already own a development kit for this part and have experience using it (see [nucleof767zi-rs](https://github.com/bbrown1867/nucleof767zi-rs)).
     * Rationale: This part is intended for high-performance embedded applications, like audio/video.
     * Rationale: This part contains hardware support for video (DCIM) and bulk storage (QSPI flash, SD card)
 2. The dash cam shall use an OV9655 color CMOS camera for video capture.
     * Rationale: Compatible with DCIM on the STM32F767ZI and example C code exists.
     * Rationale: Has lots of desirable features like high resolution (1.3 MP), color, multiple output data formats.
-    * Rationale: Development board is available for purchase that will connect easily to a microcontroller development kit.
+    * Rationale: [Development board](https://www.waveshare.com/ov9655-camera-board.htm) is available for purchase that will connect easily to a microcontroller development kit.
+    * _Note: OmniVision does not market this product anymore and I can't find any sellers for the chip itself. This could be a problem when making a custom PCB. The only in-stock OmniVision product with the same parallel interface I could find on DigiKey was the OVM7692. However it has a much lower resolution and no datasheet in the public domain._
 
 ## Low-Level Requirements (Tasks)
 1. DCIM HAL driver development and OV9655 device driver development.
