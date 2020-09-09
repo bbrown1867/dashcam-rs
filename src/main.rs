@@ -118,14 +118,19 @@ fn sccb_reg_read(
     i2c: &mut BlockingI2c<I2C1, PB8<Alternate<AF4>>, PB9<Alternate<AF4>>>,
     reg: u8,
 ) -> u8 {
-    let buf1 = [reg, 0x00];
-    let mut buf2 = [0x00, 0x00];
-    match i2c.write_read(OV9655_SLAVE_ADDRESS, &buf1, &mut buf2) {
-        Ok(_) => rprintln!("SCCB register read {:#x} = {:#x} passed.", reg, buf2[1]),
+    let buf1 = [reg];
+    match i2c.write(OV9655_SLAVE_ADDRESS, &buf1) {
+        Ok(_) => (),
         Err(e) => rprintln!("SCCB register read failed with error code {:?}.", e),
     };
 
-    buf2[1]
+    let mut buf2 = [0x00];
+    match i2c.read(OV9655_SLAVE_ADDRESS, &mut buf2) {
+        Ok(_) => rprintln!("SCCB register read {:#x} = {:#x} passed.", reg, buf2[0]),
+        Err(e) => rprintln!("SCCB register read failed with error code {:?}.", e)
+    }
+
+    buf2[0]
 }
 
 fn sccb_reg_write(
