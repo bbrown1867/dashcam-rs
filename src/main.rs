@@ -127,7 +127,7 @@ fn sccb_reg_read(
     let mut buf2 = [0x00];
     match i2c.read(OV9655_SLAVE_ADDRESS, &mut buf2) {
         Ok(_) => rprintln!("SCCB register read {:#x} = {:#x} passed.", reg, buf2[0]),
-        Err(e) => rprintln!("SCCB register read failed with error code {:?}.", e)
+        Err(e) => rprintln!("SCCB register read failed with error code {:?}.", e),
     }
 
     buf2[0]
