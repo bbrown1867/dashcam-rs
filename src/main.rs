@@ -5,25 +5,19 @@
 #![no_main]
 #![no_std]
 
+use dashcam_rs::ov9655::sccb::SCCB;
+
 use core::panic::PanicInfo;
 use cortex_m_rt::entry;
 use rtt_target::{rprintln, rtt_init, set_print_channel};
 use stm32f7xx_hal::{
     delay::Delay,
-    gpio::{
-        gpiob::{PB8, PB9},
-        Alternate, Speed, AF4,
-    },
+    gpio::Speed,
     i2c::{BlockingI2c, Mode},
-    pac::{self, I2C1, RCC},
+    pac::{self, RCC},
     prelude::*,
     rcc::{HSEClock, HSEClockMode},
 };
-
-// Device address for writes is 0x60 and reads is 0x61, however the STM32F7 HAL I2C driver will
-// left-shift the provided address by 1. Also reads (0x61) is never used, because even register
-// reads require writing the address of the register we wish to read.
-const OV9655_SLAVE_ADDRESS: u8 = 0x30;
 
 #[entry]
 fn main() -> ! {
@@ -62,7 +56,7 @@ fn main() -> ! {
     // Delay
     let mut delay = Delay::new(cm_periph.SYST, clocks);
 
-    // Configure I2C4 for Serial Camera Control Bus
+    // Configure I2C1 for Serial Camera Control Bus
     let gpiob = pac_periph.GPIOB.split();
 
     let scl = gpiob
@@ -76,8 +70,6 @@ fn main() -> ! {
         .internal_pull_up(true)
         .set_open_drain();
 
-    rprintln!("Initializing I2C...");
-
     let mut i2c = BlockingI2c::i2c1(
         pac_periph.I2C1,
         (scl, sda),
@@ -87,62 +79,16 @@ fn main() -> ! {
         10000,
     );
 
-    rprintln!("I2C initialization complete!");
+    // Establish communication with the OV9655 using the SCCB
+    let sccb = SCCB::new(&mut i2c);
+    sccb.check_id(&mut i2c).unwrap();
+    sccb.reset(&mut i2c).unwrap();
 
-    // OV9655: Reset all registers
-    sccb_reg_write(&mut i2c, 0x12, 0x80);
-    rprintln!("OV9655 reset complete!");
-    delay.delay_ms(1000_u16);
-
-    // OV9655: Read ID
-    let manf_id_msb: u16 = sccb_reg_read(&mut i2c, 0x1C).into();
-    let manf_id_lsb: u16 = sccb_reg_read(&mut i2c, 0x1D).into();
-    let manf_id: u16 = (manf_id_msb << 8) | manf_id_lsb;
-    rprintln!("OV9655 Manf ID = {:#x}", manf_id);
-
-    let product_id_msb: u16 = sccb_reg_read(&mut i2c, 0x0A).into();
-    let product_id_lsb: u16 = sccb_reg_read(&mut i2c, 0x0B).into();
-    let product_id: u16 = (product_id_msb << 8) | product_id_lsb;
-    rprintln!("OV9655 Product ID = {:#x}", product_id);
-
-    for reg in 0x0..0x0B {
-        sccb_reg_read(&mut i2c, reg);
-    }
+    rprintln!("SCCB initialization complete!");
 
     loop {
         delay.delay_ms(500_u16);
     }
-}
-
-fn sccb_reg_read(
-    i2c: &mut BlockingI2c<I2C1, PB8<Alternate<AF4>>, PB9<Alternate<AF4>>>,
-    reg: u8,
-) -> u8 {
-    let buf1 = [reg];
-    match i2c.write(OV9655_SLAVE_ADDRESS, &buf1) {
-        Ok(_) => (),
-        Err(e) => rprintln!("SCCB register read failed with error code {:?}.", e),
-    };
-
-    let mut buf2 = [0x00];
-    match i2c.read(OV9655_SLAVE_ADDRESS, &mut buf2) {
-        Ok(_) => rprintln!("SCCB register read {:#x} = {:#x} passed.", reg, buf2[0]),
-        Err(e) => rprintln!("SCCB register read failed with error code {:?}.", e),
-    }
-
-    buf2[0]
-}
-
-fn sccb_reg_write(
-    i2c: &mut BlockingI2c<I2C1, PB8<Alternate<AF4>>, PB9<Alternate<AF4>>>,
-    reg: u8,
-    val: u8,
-) {
-    let buf = [reg, val];
-    match i2c.write(OV9655_SLAVE_ADDRESS, &buf) {
-        Ok(_) => rprintln!("SCCB register write {:#x} = {:#x} passed.", reg, val),
-        Err(e) => rprintln!("SCCB register write failed with error code {:?}.", e),
-    };
 }
 
 #[inline(never)]
