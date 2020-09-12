@@ -1,6 +1,9 @@
 //! A generic driver for the Serial Camera Control Bus on the OV9655 image sensor. Tested with the
 //! STM32F767ZI microcontroller, but in theory should work on any microcontroller implementing the
 //! embedded-hal I2C interface.
+//!
+//! Could this be converted into an SCCB driver for any OmniVision image sensor? Would need to
+//! abstract the different registers and other device specific information.
 
 use core::marker::PhantomData;
 use embedded_hal::blocking::i2c;
@@ -57,7 +60,7 @@ where
     }
 
     //// Read a register
-    pub fn read_register(&self, i2c: &mut I2C, reg: u8) -> Result<u8, SccbError> {
+    fn read_register(&self, i2c: &mut I2C, reg: u8) -> Result<u8, SccbError> {
         let mut buf = [reg];
         self.i2c_write(i2c, &[reg])?;
         self.i2c_read(i2c, &mut buf)?;
@@ -65,12 +68,19 @@ where
     }
 
     /// Write a register
-    pub fn write_register(&self, i2c: &mut I2C, reg: u8, val: u8) -> Result<(), SccbError> {
+    fn write_register(&self, i2c: &mut I2C, reg: u8, val: u8) -> Result<(), SccbError> {
         self.i2c_write(i2c, &[reg, val])
+    }
+
+    /// Reset all registers to their default values
+    pub fn reset(&self, i2c: &mut I2C) -> Result<(), SccbError> {
+        // Setting the upper bit of this register resets all the registers
+        self.write_register(i2c, Register::COM_CNTRL_7, 0x80)
     }
 
     /// Check the device ID matches the expected value
     pub fn check_id(&self, i2c: &mut I2C) -> Result<(), SccbError> {
+        // Manf ID
         let manf_id_msb: u16 = self.read_register(i2c, Register::MANF_ID_MSB)?.into();
         let manf_id_lsb: u16 = self.read_register(i2c, Register::MANF_ID_LSB)?.into();
         let manf_id: u16 = (manf_id_msb << 8) | manf_id_lsb;
@@ -78,6 +88,7 @@ where
             return Err(SccbError::ReadManfId);
         }
 
+        // Product ID
         let product_id_msb: u16 = self.read_register(i2c, Register::PROD_ID_MSB)?.into();
         let product_id_lsb: u16 = self.read_register(i2c, Register::PROD_ID_LSB)?.into();
         let product_id: u16 = (product_id_msb << 8) | product_id_lsb;
@@ -87,25 +98,19 @@ where
 
         Ok(())
     }
-
-    pub fn reset(&self, i2c: &mut I2C) -> Result<(), SccbError> {
-        self.write_register(i2c, Register::COM_CNTRL_7, OV9655_RESET_VAL)
-    }
 }
-
-// TODO: Device specific stuff below here. How to make generic for any OmniVision device???
 
 // Device address for is 0x60, however the I2C driver will left-shift the provided address by 1
 const OV9655_ADDRESS: u8 = 0x30;
 
-// Other misc constants
-const OV9655_MANF_ID: u16 = 0x7FA2; // Weird that iit s not "OV" in ASCII...
-const OV9655_PROD_ID: u16 = 0x9657; // Weird that it is not 9655...
-const OV9655_RESET_VAL: u8 = 0x80;
+// Expected manufacturer ID (weird that it is not "OV" in ASCII...)
+const OV9655_MANF_ID: u16 = 0x7FA2;
 
-#[non_exhaustive]
+// Expected product ID (weird that it is not "9655"...)
+const OV9655_PROD_ID: u16 = 0x9657;
+
+// Device registers
 struct Register;
-
 impl Register {
     pub const PROD_ID_MSB: u8 = 0x0A;
     pub const PROD_ID_LSB: u8 = 0x0B;
