@@ -80,11 +80,16 @@ fn main() -> ! {
     );
 
     // Establish communication with the OV9655 using the SCCB
-    let sccb = SCCB::new(&mut i2c);
-    sccb.reset(&mut i2c).unwrap();
-    sccb.check_id(&mut i2c).unwrap();
-
+    let i2c_ref = &mut i2c;
+    let sccb = SCCB::new(i2c_ref);
+    sccb.reset(i2c_ref).unwrap();
+    delay.delay_ms(1000_u16);
+    sccb.check_id(i2c_ref).unwrap();
     rprintln!("SCCB initialization complete!");
+
+    // QVGA size setup
+    sccb.qvga_setup(i2c_ref).unwrap();
+    rprintln!("QVGA setup complete!");
 
     loop {
         delay.delay_ms(500_u16);
