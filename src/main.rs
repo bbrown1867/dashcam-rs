@@ -81,8 +81,8 @@ fn main() -> ! {
 
     // Establish communication with the OV9655 using the SCCB
     let sccb = SCCB::new(&mut i2c);
-    sccb.check_id(&mut i2c).unwrap();
     sccb.reset(&mut i2c).unwrap();
+    sccb.check_id(&mut i2c).unwrap();
 
     rprintln!("SCCB initialization complete!");
 
