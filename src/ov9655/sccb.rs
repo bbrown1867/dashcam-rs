@@ -13,6 +13,19 @@ pub struct SCCB<I2C> {
     address: u8,
 }
 
+/// SCCB errors
+#[derive(Debug, Eq, PartialEq)]
+pub enum SccbError {
+    /// I2C Write error
+    I2cWriteError,
+    /// I2C Read error
+    I2cReadError,
+    /// Read Manf ID error
+    ReadManfId,
+    /// Read Product ID error
+    ReadProdId,
+}
+
 impl<I2C, E> SCCB<I2C>
 where
     I2C: i2c::Read<Error = E> + i2c::Write<Error = E>,
@@ -25,42 +38,57 @@ where
         }
     }
 
-    /// Read a register
-    fn read_register(&self, i2c: &mut I2C, reg: u8) -> Result<u8, E> {
-        let mut buf = [0x00];
-        i2c.write(self.address, &[reg])?;
-        i2c.read(self.address, &mut buf)?;
+    /// I2C read wrapper
+    fn i2c_read(&self, i2c: &mut I2C, buf: &mut [u8]) -> Result<u8, SccbError> {
+        match i2c.read(self.address, buf) {
+            Ok(()) => Ok(buf[0]),
+            // Could log the exact I2C error of type E here
+            Err(_) => Err(SccbError::I2cReadError),
+        }
+    }
+
+    /// I2C write wrapper
+    fn i2c_write(&self, i2c: &mut I2C, buf: &[u8]) -> Result<(), SccbError> {
+        match i2c.write(self.address, buf) {
+            Ok(()) => Ok(()),
+            // Could log the exact I2C error of type E here
+            Err(_) => Err(SccbError::I2cWriteError),
+        }
+    }
+
+    //// Read a register
+    pub fn read_register(&self, i2c: &mut I2C, reg: u8) -> Result<u8, SccbError> {
+        let mut buf = [reg];
+        self.i2c_write(i2c, &[reg])?;
+        self.i2c_read(i2c, &mut buf)?;
         Ok(buf[0])
     }
 
     /// Write a register
-    fn write_register(&self, i2c: &mut I2C, reg: u8, val: u8) -> Result<(), E> {
-        let mut buf = [reg, val];
-        i2c.write(self.address, &mut buf)?;
-
-        Ok(())
+    pub fn write_register(&self, i2c: &mut I2C, reg: u8, val: u8) -> Result<(), SccbError> {
+        self.i2c_write(i2c, &[reg, val])
     }
 
     /// Check the device ID matches the expected value
-    pub fn check_id(&self, i2c: &mut I2C) -> Result<(), E> {
+    pub fn check_id(&self, i2c: &mut I2C) -> Result<(), SccbError> {
         let manf_id_msb: u16 = self.read_register(i2c, Register::MANF_ID_MSB)?.into();
         let manf_id_lsb: u16 = self.read_register(i2c, Register::MANF_ID_LSB)?.into();
         let manf_id: u16 = (manf_id_msb << 8) | manf_id_lsb;
-
-        // TODO: Error handling
-        assert!(manf_id == OV9655_MANF_ID);
+        if manf_id != OV9655_MANF_ID {
+            return Err(SccbError::ReadManfId);
+        }
 
         let product_id_msb: u16 = self.read_register(i2c, Register::PROD_ID_MSB)?.into();
         let product_id_lsb: u16 = self.read_register(i2c, Register::PROD_ID_LSB)?.into();
         let product_id: u16 = (product_id_msb << 8) | product_id_lsb;
-
-        // TODO: Error handling
-        assert!(product_id == OV9655_PROD_ID);
+        if product_id != OV9655_PROD_ID {
+            return Err(SccbError::ReadProdId);
+        }
 
         Ok(())
     }
 
-    pub fn reset(&self, i2c: &mut I2C) -> Result<(), E> {
+    pub fn reset(&self, i2c: &mut I2C) -> Result<(), SccbError> {
         self.write_register(i2c, Register::COM_CNTRL_7, OV9655_RESET_VAL)
     }
 }
