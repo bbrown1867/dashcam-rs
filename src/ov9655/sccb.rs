@@ -105,8 +105,7 @@ where
     }
 
     /// Perform a sequence of register writes to setup the OV9655 for QVGA mode
-    pub fn qvga_setup(&self, i2c: &mut I2C) -> Result<(), SccbError<E>>
-    {
+    pub fn qvga_setup(&self, i2c: &mut I2C) -> Result<(), SccbError<E>> {
         // TODO: Revisit these registers
 
         // Registers range from 0x00 to 0xC7, although we don't write every one
