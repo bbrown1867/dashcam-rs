@@ -103,38 +103,6 @@ fn main() -> ! {
     sccb.qvga_setup(i2c_ref).unwrap();
     rprintln!("QVGA setup complete!");
 
-    /*
-        DCMI setup steps:
-            - DCMI periph:
-                - DCMI_CaptureMode_Continuous
-                - DCMI_SynchroMode_Hardware
-                - DCMI_PCKPolarity_Falling
-                - DCMI_VSPolarity_High
-                - DCMI_HSPolarity_High
-                - DCMI_CaptureRate_All_Frame
-                - DCMI_ExtendedDataMode_8b
-            - VSYNC interrupt enabled in DCMI periph but none other
-            - NVIC enable DCMI interrupts
-        - DMA2 setup
-            - Enable AHB1 periph clock for DMA2
-            - DMA_Channel_1
-            - DMA_PeripheralBaseAddr = 0x50050028
-            - DMA_Memory0BaseAddr = (Pick a RAM bank)
-            - DMA_BufferSize = ??? 320 ???
-            - DMA_PeripheralInc_Disable
-            - DMA_MemoryInc_Disable
-            - DMA_PeripheralDataSize_Word
-            - DMA_MemoryDataSize_HalfWord
-            - DMA_Mode_Circular ???
-            - DMA_Priority_High
-            - DMA_FIFOMode_Enable
-            - DMA_FIFOThreshold_Full
-            - DMA_MemoryBurst_Single
-            - DMA_PeripheralBurst_Single
-
-        Then ENABLE DCMI and DMA2, tghen ENABLE DCMI capture command
-    */
-
     // Enable AHB2 periph clock for DCMI
     rcc_regs.ahb2enr.modify(|_, w| w.dcmien().set_bit());
 
@@ -216,8 +184,43 @@ fn main() -> ! {
         .set_open_drain()
         .set_speed(Speed::VeryHigh);
 
+    /*
+        DCMI setup steps:
+            - DCMI periph:
+                - DCMI_CaptureMode_Continuous
+                - DCMI_SynchroMode_Hardware
+                - DCMI_PCKPolarity_Falling
+                - DCMI_VSPolarity_High
+                - DCMI_HSPolarity_High
+                - DCMI_CaptureRate_All_Frame
+                - DCMI_ExtendedDataMode_8b
+            - VSYNC interrupt enabled in DCMI periph but none other
+            - NVIC enable DCMI interrupts
+        - DMA2 setup
+            - Enable AHB1 periph clock for DMA2
+            - DMA_Channel_1
+            - DMA_PeripheralBaseAddr = 0x50050028
+            - DMA_Memory0BaseAddr = (Pick a RAM bank)
+            - DMA_BufferSize = ??? 320 ???
+            - DMA_PeripheralInc_Disable
+            - DMA_MemoryInc_Disable
+            - DMA_PeripheralDataSize_Word
+            - DMA_MemoryDataSize_HalfWord
+            - DMA_Mode_Circular ???
+            - DMA_Priority_High
+            - DMA_FIFOMode_Enable
+            - DMA_FIFOThreshold_Full
+            - DMA_MemoryBurst_Single
+            - DMA_PeripheralBurst_Single
+
+        Then ENABLE DCMI and DMA2, tghen ENABLE DCMI capture command
+    */
+
     // No HAL driver exists for DCMI
     let dcmi_regs = unsafe { &(*DCMI::ptr()) };
+
+    // Start capture!
+    dcmi_regs.cr.modify(|_, w| w.enable().set_bit());
 
     loop {
         delay.delay_ms(500_u16);
