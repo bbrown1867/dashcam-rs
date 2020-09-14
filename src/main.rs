@@ -19,6 +19,9 @@
 use dashcam_rs::ov9655::sccb::SCCB;
 
 use core::panic::PanicInfo;
+use core::cell::Cell;
+use cortex_m::interrupt::{free, Mutex};
+use cortex_m::peripheral::NVIC;
 use cortex_m_rt::entry;
 use rtt_target::{rprintln, rtt_init, set_print_channel};
 use stm32f7xx_hal::{
@@ -28,7 +31,12 @@ use stm32f7xx_hal::{
     pac::{self, DCMI, DMA2, RCC},
     prelude::*,
     rcc::{HSEClock, HSEClockMode},
+    interrupt
 };
+
+// Shared memory between main thread and interrupts
+static DCMI_INT_STATUS: Mutex<Cell<u32>> = Mutex::new(Cell::new(0));
+static DMA2_INT_STATUS: Mutex<Cell<u32>> = Mutex::new(Cell::new(0));
 
 #[entry]
 fn main() -> ! {
@@ -205,15 +213,17 @@ fn main() -> ! {
     // Enable the VSYNC interrupt
     dcmi_regs.ier.write(|w| w.vsync_ie().set_bit());
 
-    // TODO: NVIC enable DCMI interrupt
+    // Enable DCMI interrupt
+    unsafe {
+        NVIC::unmask::<interrupt>(interrupt::DCMI);
+    }
 
     // Enable DMA clocks
     rcc_regs.ahb1enr.modify(|_, w| w.dma2en().set_bit());
 
-
     let dma_size: u16 = 320;
     let dcmi_addr: u32 = 0x5005_0000 + 0x28;
-    let mem_addr: u32 = 0x20000000;
+    let mem_addr: u32 = 0x2007_C000; // SRAM2: 16 KB
     unsafe {
         let dma2_regs = &(*DMA2::ptr());
 
@@ -293,6 +303,9 @@ fn main() -> ! {
         dma2_regs.st[1].par.write(|w| w.pa().bits(dcmi_addr));
         dma2_regs.st[1].m0ar.write(|w| w.m0a().bits(mem_addr));
 
+        // Enable DMA2 interrupts
+        NVIC::unmask::<interrupt>(interrupt::DMA2_STREAM1);
+
         // Enable DMA
         dma2_regs.st[1].cr.modify(|_, w| w.en().set_bit());
     }
@@ -303,11 +316,77 @@ fn main() -> ! {
         .modify(|_, w| w.enable().set_bit().capture().set_bit());
 
     loop {
-        delay.delay_ms(500_u16);
+        // Wait for the interrupt to fire
+        free(|cs| {
+            let dcmi_int_status = DCMI_INT_STATUS.borrow(cs).get();
+            let dma2_int_status = DMA2_INT_STATUS.borrow(cs).get();
+            if dcmi_int_status != 0 || dma2_int_status != 0 {
+                let buffer_pointer = mem_addr as *const _;
+                let buffer: [u16; 4] = unsafe { *buffer_pointer };
+
+                rprintln!("DCMI Int = {}", dcmi_int_status);
+                rprintln!("DMA2 Int = {}", dma2_int_status);
+                rprintln!("Buffer:");
+                rprintln!("\t{}", buffer[0]);
+                rprintln!("\t{}", buffer[1]);
+                rprintln!("\t{}", buffer[2]);
+                rprintln!("\t{}", buffer[3]);
+
+                DCMI_INT_STATUS.borrow(cs).set(0);
+                DMA2_INT_STATUS.borrow(cs).set(0);
+            }
+        });
     }
 }
 
-// TODO: DCMI interrupt handler
+#[interrupt]
+fn DCMI() {
+    free(|cs| {
+        // If main thread is not processing a previous interrupt
+        if DCMI_INT_STATUS.borrow(cs).get() == 0 {
+            // Read interrupt status
+            let dcmi_regs = unsafe { &(*DCMI::ptr()) };
+            let int_status = dcmi_regs.ris.read().bits();
+
+            // If an interrupt fired
+            if int_status != 0 {
+                // Signal interrupt status to main thread
+                DCMI_INT_STATUS.borrow(cs).set(int_status);
+
+                // Clear the pending interrupt
+                unsafe {
+                    dcmi_regs.icr.write(|w| w.bits(int_status));
+                }
+            }
+        }
+    });
+}
+
+#[interrupt]
+fn DMA2_STREAM1() {
+    free(|cs| {
+        // If main thread is not processing a previous interrupt
+        if DMA2_INT_STATUS.borrow(cs).get() == 0 {
+            // Read interrupt status
+            let dma2_regs = unsafe { &(*DMA2::ptr()) };
+            let mut int_status = dma2_regs.lisr.read().bits();
+
+            // Mask away interrupts that aren't channel 1
+            int_status &= 0xF40;
+
+            // If an interrupt fired
+            if int_status != 0 {
+                // Signal interrupt status to main thread
+                DMA2_INT_STATUS.borrow(cs).set(int_status);
+
+                // Clear the pending interrupt
+                unsafe {
+                    dma2_regs.lifcr.write(|w| w.bits(int_status));
+                }
+            }
+        }
+    });
+}
 
 #[inline(never)]
 #[panic_handler]
