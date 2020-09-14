@@ -110,13 +110,17 @@ where
         // Registers range from 0x00 to 0xC7, although we don't write every one
         let mut reg_vals = LinearMap::<u8, u8, consts::U200>::new();
 
-        // 30 fps VGA with RGB output data format
-        reg_vals.insert(Register::COM_CNTRL_07, 0x63).unwrap();
+        // 15 fps VGA with RGB output data format
+        reg_vals.insert(Register::COM_CNTRL_07, 0x03).unwrap();
 
-        // PCLK falling edge (reverse?), HREF active low (reverse?)
-        reg_vals.insert(Register::COM_CNTRL_10, 0x18).unwrap();
+        // Pin configuration:
+        // --> Bit 6: Set to 1 to change HREF to HSYNC, which STM32 DCMI expects
+        // --> Bit 4: PCLK reverse, assuming that means falling edge
+        // --> Bit 1: VSYNC negative, unclear what this means - we are using active high
+        // --> Bit 0: HSYNC negative, unclear what this means - we are using active high
+        reg_vals.insert(Register::COM_CNTRL_10, 0x50).unwrap();
 
-        // Full output range, RGB 565 data format
+        // RGB 565 data format with full output range (0x00 --> 0xFF)
         reg_vals.insert(Register::COM_CNTRL_15, 0x10).unwrap();
 
         // Scale down ON
@@ -157,9 +161,6 @@ where
 
         // Enables auto adjusting for de-noise and edge enhancement
         reg_vals.insert(Register::COM_CNTRL_17, 0xc0).unwrap();
-
-        // Use VarioPixel
-        reg_vals.insert(Register::VARIO_PX_SEL, 0x0a).unwrap();
 
         for (reg, val) in reg_vals.iter() {
             self.write_register(i2c, *reg, *val)?;
@@ -224,8 +225,5 @@ impl Register {
     pub const PIX_CLK_DIVD: u8 = 0x73;
     pub const PIX_HOR_SCAL: u8 = 0x74;
     pub const PIX_VER_SCAL: u8 = 0x75;
-
-    // Misc configuration registers
     pub const MIRROR_VFLIP: u8 = 0x1E;
-    pub const VARIO_PX_SEL: u8 = 0x69;
 }

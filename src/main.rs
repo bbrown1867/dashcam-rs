@@ -25,7 +25,7 @@ use stm32f7xx_hal::{
     delay::Delay,
     gpio::Speed,
     i2c::{BlockingI2c, Mode},
-    pac::{self, DCMI, RCC},
+    pac::{self, DCMI, DMA2, RCC},
     prelude::*,
     rcc::{HSEClock, HSEClockMode},
 };
@@ -184,48 +184,130 @@ fn main() -> ! {
         .set_open_drain()
         .set_speed(Speed::VeryHigh);
 
-    /*
-        DCMI setup steps:
-            - DCMI periph:
-                - DCMI_CaptureMode_Continuous
-                - DCMI_SynchroMode_Hardware
-                - DCMI_PCKPolarity_Falling
-                - DCMI_VSPolarity_High
-                - DCMI_HSPolarity_High
-                - DCMI_CaptureRate_All_Frame
-                - DCMI_ExtendedDataMode_8b
-            - VSYNC interrupt enabled in DCMI periph but none other
-            - NVIC enable DCMI interrupts
-        - DMA2 setup
-            - Enable AHB1 periph clock for DMA2
-            - DMA_Channel_1
-            - DMA_PeripheralBaseAddr = 0x50050028
-            - DMA_Memory0BaseAddr = (Pick a RAM bank)
-            - DMA_BufferSize = ??? 320 ???
-            - DMA_PeripheralInc_Disable
-            - DMA_MemoryInc_Disable
-            - DMA_PeripheralDataSize_Word
-            - DMA_MemoryDataSize_HalfWord
-            - DMA_Mode_Circular ???
-            - DMA_Priority_High
-            - DMA_FIFOMode_Enable
-            - DMA_FIFOThreshold_Full
-            - DMA_MemoryBurst_Single
-            - DMA_PeripheralBurst_Single
-
-        Then ENABLE DCMI and DMA2, tghen ENABLE DCMI capture command
-    */
-
     // No HAL driver exists for DCMI
     let dcmi_regs = unsafe { &(*DCMI::ptr()) };
 
+    // Set both SYNC signals to be active high and use snapshot mode for now
+    // By default: We use hardware sync (ESS = 0), 8-bit data mode (EDM = 00), PCLK polarity
+    //             falling (PCKPOL = 0), capture all frames (FCRC = 0)
+    dcmi_regs.cr.write(|w| {
+        // Active high VSYNC
+        w.vspol()
+            .set_bit()
+            // Active high HSYNC
+            .hspol()
+            .set_bit()
+            // Snapshot
+            .cm()
+            .set_bit()
+    });
+
+    // Enable the VSYNC interrupt
+    dcmi_regs.ier.write(|w| w.vsync_ie().set_bit());
+
+    // TODO: NVIC enable DCMI interrupt
+
+    // Enable DMA clocks
+    rcc_regs.ahb1enr.modify(|_, w| w.dma2en().set_bit());
+
+
+    let dma_size: u16 = 320;
+    let dcmi_addr: u32 = 0x5005_0000 + 0x28;
+    let mem_addr: u32 = 0x20000000;
+    unsafe {
+        let dma2_regs = &(*DMA2::ptr());
+
+        // Configure DMA
+        dma2_regs.st[1].cr.write(|w| {
+            w
+                // Enable DME interrupt
+                .dmeie()
+                .set_bit()
+                // Enable TCIE interrupt
+                .teie()
+                .set_bit()
+                // Disable HTIE interrupt
+                .htie()
+                .clear_bit()
+                // Enable TCIC interrupt
+                .tcie()
+                .set_bit()
+                // Peripheral is flow controller
+                .pfctrl()
+                .set_bit()
+                // Direction: Peripheral to memory
+                .dir()
+                .bits(0)
+                // Disable circular mode
+                .circ()
+                .clear_bit()
+                // Don't increment peripheral address
+                .pinc()
+                .clear_bit()
+                // Increment the memory address
+                .minc()
+                .set_bit()
+                // Transfer a word at a time from the peripheral
+                .psize()
+                .bits(0)
+                // Place into memory in half-word alignment (RGB565)
+                .msize()
+                .bits(1)
+                // PINCOS has no meaning since PINC is 0
+                // .pincos()
+                // .clear_bit()
+                // Priority level is high
+                .pl()
+                .bits(0x3)
+                // No double buffer mode for now (change for ping-pong)
+                .dbm()
+                .clear_bit()
+                // CT has no meaning when DBM = 0
+                // .ct()
+                // .clear_bit()
+                // No peripheral burst, single word
+                .pburst()
+                .bits(0)
+                // No memory burst, single word
+                .mburst()
+                .bits(0)
+                // Channel = 1
+                .chsel()
+                .bits(1)
+        });
+
+        dma2_regs.st[1].fcr.write(|w| {
+            w
+                // Set FIFO threshold to full
+                .fth()
+                .bits(0x3)
+                // Enable FIFO mode (disable direct mode)
+                .dmdis()
+                .set_bit()
+                // Enable FEIE interrupt
+                .feie()
+                .set_bit()
+        });
+
+        dma2_regs.st[1].ndtr.write(|w| w.ndt().bits(dma_size));
+        dma2_regs.st[1].par.write(|w| w.pa().bits(dcmi_addr));
+        dma2_regs.st[1].m0ar.write(|w| w.m0a().bits(mem_addr));
+
+        // Enable DMA
+        dma2_regs.st[1].cr.modify(|_, w| w.en().set_bit());
+    }
+
     // Start capture!
-    dcmi_regs.cr.modify(|_, w| w.enable().set_bit());
+    dcmi_regs
+        .cr
+        .modify(|_, w| w.enable().set_bit().capture().set_bit());
 
     loop {
         delay.delay_ms(500_u16);
     }
 }
+
+// TODO: DCMI interrupt handler
 
 #[inline(never)]
 #[panic_handler]
