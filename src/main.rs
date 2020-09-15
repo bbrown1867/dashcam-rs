@@ -1,3 +1,5 @@
+//! A prototype dashboard camera.
+
 #![no_main]
 #![no_std]
 
