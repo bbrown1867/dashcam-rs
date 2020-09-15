@@ -11,8 +11,7 @@ cortex-m-rt = "0.6.10"
 
 # HAL
 embedded-hal = "0.2.3"
-# stm32f7xx-hal = { version = "0.2.0", features = ["rt", "stm32f767"] }
-stm32f7xx-hal = { path = "../stm32f7xx-hal", features = ["rt", "stm32f767"] }
+stm32f7xx-hal = { version = "0.2.0", features = ["rt", "stm32f767"] }
 
 # BSP
 nucleof767zi-rs = { git = "https://github.com/bbrown1867/nucleof767zi-rs" }
