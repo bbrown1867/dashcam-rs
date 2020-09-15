@@ -1,5 +1,4 @@
-//! Initialize pins for the board. The peripherals are stolen, so
-//! this should only be done during initialization to be safe.
+//! GPIO pin configuration for the board.
 
 use stm32f7xx_hal::{
     device, gpio,
@@ -7,7 +6,12 @@ use stm32f7xx_hal::{
     prelude::*,
 };
 
-/// Pin configuration for this board:
+/// Configure GPIOs for alternate functions and return the I2C pins since they are needed for
+/// I2C driver. Note that the peripherals are stolen, so this should only be done during init
+/// to be safe.
+///
+/// Pin configuration for the Nucleo-F767ZI:
+///
 ///     I2C1 SCL:   PB8  --> Nucleo CN7.2   (D15)  --> OV9655 SIOC
 ///     I2C1 SDA:   PB9 <--> Nucleo CN7.4   (D14) <--> OV9655 SIOD
 ///     MCO2:       PC9  --> Nucleo CN8.4   (D44)  --> OV9655 XCLK

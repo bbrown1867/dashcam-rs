@@ -9,29 +9,29 @@ use core::marker::PhantomData;
 use embedded_hal::blocking::i2c;
 use heapless::{consts, LinearMap};
 
-// Type alias for register map
+/// Statically allocated (200 elements) linear map for mapping addresses (`u8`) to values (`u8`).
 pub type RegMap = LinearMap<u8, u8, consts::U200>;
 
-/// SCCB driver
+/// SCCB driver.
 pub struct SCCB<I2C> {
-    // Ensures the same I2C type is used in all calls
+    /// Marker to ensure the same I2C type is used in all calls.
     i2c: PhantomData<I2C>,
-    // Even though this is constant, keeping it a a member for now in case it ever changes
+    /// Device I2C address.
     address: u8,
 }
 
-/// SCCB errors
+/// SCCB errors.
 #[derive(Debug, Eq, PartialEq)]
 pub enum SccbError<E> {
-    /// I2C Write error
+    /// I2C write error.
     I2cWrite(E),
-    /// I2C Read error
+    /// I2C read error.
     I2cRead(E),
-    /// Read Manf ID error
+    /// Manufacturer ID mismatch.
     ReadManfId,
-    /// Read Product ID error
+    /// Product ID mismatch.
     ReadProdId,
-    // Register write-read mismatch
+    /// Register write-readback mismatch.
     RegMismatch((u8, u8)),
 }
 
@@ -39,7 +39,7 @@ impl<I2C, E> SCCB<I2C>
 where
     I2C: i2c::Read<Error = E> + i2c::Write<Error = E>,
 {
-    /// Creates a new SCCB driver associated with an I2C peripheral
+    /// Creates a new SCCB driver associated with an I2C peripheral.
     pub fn new(_i2c: &I2C) -> Self {
         SCCB {
             i2c: PhantomData,
@@ -47,7 +47,7 @@ where
         }
     }
 
-    /// I2C read wrapper for mapping E --> SccbError
+    /// I2C read wrapper for mapping `E --> SccbError`.
     fn i2c_read(&self, i2c: &mut I2C, buf: &mut [u8]) -> Result<(), SccbError<E>> {
         match i2c.read(self.address, buf) {
             Ok(()) => Ok(()),
@@ -55,7 +55,7 @@ where
         }
     }
 
-    /// I2C write wrapper for mapping E --> SccbError
+    /// I2C write wrapper for mapping `E --> SccbError`.
     fn i2c_write(&self, i2c: &mut I2C, buf: &[u8]) -> Result<(), SccbError<E>> {
         match i2c.write(self.address, buf) {
             Ok(()) => Ok(()),
@@ -63,7 +63,7 @@ where
         }
     }
 
-    //// Read a register, must be two seperate transactions can't use WriteRead
+    /// Read a register, must be two seperate transactions and we can't use `WriteRead`.
     fn read_register(&self, i2c: &mut I2C, reg: u8) -> Result<u8, SccbError<E>> {
         // Write the address
         self.i2c_write(i2c, &[reg])?;
@@ -71,23 +71,24 @@ where
         // Read the value
         let mut buf = [0x00];
         self.i2c_read(i2c, &mut buf)?;
+
         Ok(buf[0])
     }
 
-    /// Write a register
+    /// Write a register.
     fn write_register(&self, i2c: &mut I2C, reg: u8, val: u8) -> Result<(), SccbError<E>> {
         // Write the address and value
         self.i2c_write(i2c, &[reg, val])
     }
 
-    /// Reset all registers to their default values
+    /// Reset all registers to their default values.
     pub fn reset(&self, i2c: &mut I2C) -> Result<(), SccbError<E>> {
         // Setting the upper bit of this register resets all the registers
         let reg = self.read_register(i2c, Register::COM_CNTRL_07)?;
         self.write_register(i2c, Register::COM_CNTRL_07, reg | 0x80)
     }
 
-    /// Check the device ID matches the expected value
+    /// Check the device ID matches the expected value.
     pub fn check_id(&self, i2c: &mut I2C) -> Result<(), SccbError<E>> {
         // Manf ID
         let manf_id_msb: u16 = self.read_register(i2c, Register::MANF_ID_MSB)?.into();
@@ -108,7 +109,7 @@ where
         Ok(())
     }
 
-    /// Apply a register configuration specified by the linear map
+    /// Apply a register configuration specified by the linear map.
     pub fn apply_config(&self, i2c: &mut I2C, map: &RegMap) -> Result<(), SccbError<E>> {
         for (reg, val) in map.iter() {
             self.write_register(i2c, *reg, *val)?;
@@ -131,7 +132,7 @@ const OV9655_MANF_ID: u16 = 0x7FA2;
 // Expected product ID (weird that it is not "9655"...)
 const OV9655_PROD_ID: u16 = 0x9657;
 
-// Device register addresses
+/// Device register addresses.
 pub struct Register;
 
 #[allow(dead_code)]

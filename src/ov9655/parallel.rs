@@ -1,12 +1,15 @@
 //! A driver for the parallel data bus on the OV9655 using the STM32F7 DCMI peripheral and DMA2
-//! to transfer image sensor data into on-chip memory. Assumes that GPIO and RCC are setup prior
-//! to using this module.
+//! to transfer image sensor data into memory. Assumes that GPIO and RCC are setup prior to using
+//! this module.
 
 use cortex_m::peripheral::NVIC;
 use stm32f7xx_hal::device::{interrupt, DCMI, DMA2};
 
-const DMA_CHANNEL: usize = 1;
+// DMA2-Stream 1-Channel 1 is used to interface with DCMI
+const DMA_STREAM: usize = 1;
+const DMA_CHANNEL: u8 = 1;
 
+/// Setup the DCMI peripheral to interface with the OV9655.
 pub fn dcmi_setup() {
     // TODO: No HAL driver exists for DCMI
     let dcmi_regs = unsafe { &(*DCMI::ptr()) };
@@ -40,6 +43,7 @@ pub fn dcmi_setup() {
     }
 }
 
+/// Initiate DCMI capture.
 pub fn dcmi_capture() {
     // TODO: No HAL driver exists for DCMI
     let dcmi_regs = unsafe { &(*DCMI::ptr()) };
@@ -50,13 +54,14 @@ pub fn dcmi_capture() {
         .modify(|_, w| w.enable().set_bit().capture().set_bit());
 }
 
+/// Setup DMA2 to transfer image data from DCMI to memory.
 pub fn dma2_setup(dma_size: u16, dest_addr: u32) {
     // TODO: No HAL driver exists for DMA with DCMI
     let dma2_regs = unsafe { &(*DMA2::ptr()) };
 
     unsafe {
         // Configure DMA
-        dma2_regs.st[DMA_CHANNEL].cr.write(|w| {
+        dma2_regs.st[DMA_STREAM].cr.write(|w| {
             w
                 // Enable DME interrupt
                 .dmeie()
@@ -103,13 +108,13 @@ pub fn dma2_setup(dma_size: u16, dest_addr: u32) {
                 // No memory burst, single word
                 .mburst()
                 .bits(0)
-                // Channel = 1
+                // Channel = DMA_CHANNEL
                 .chsel()
-                .bits(1)
+                .bits(DMA_CHANNEL)
         });
 
         // Configure FIFO
-        dma2_regs.st[DMA_CHANNEL].fcr.write(|w| {
+        dma2_regs.st[DMA_STREAM].fcr.write(|w| {
             w
                 // Set FIFO threshold to full
                 .fth()
@@ -128,16 +133,16 @@ pub fn dma2_setup(dma_size: u16, dest_addr: u32) {
 
     // Configure addresses and size
     let dcmi_dr_addr: u32 = 0x5005_0000 + 0x28;
-    dma2_regs.st[DMA_CHANNEL]
+    dma2_regs.st[DMA_STREAM]
         .ndtr
         .write(|w| w.ndt().bits(dma_size));
-    dma2_regs.st[DMA_CHANNEL]
+    dma2_regs.st[DMA_STREAM]
         .par
         .write(|w| w.pa().bits(dcmi_dr_addr));
-    dma2_regs.st[DMA_CHANNEL]
+    dma2_regs.st[DMA_STREAM]
         .m0ar
         .write(|w| w.m0a().bits(dest_addr));
 
     // Enable DMA2
-    dma2_regs.st[DMA_CHANNEL].cr.modify(|_, w| w.en().set_bit());
+    dma2_regs.st[DMA_STREAM].cr.modify(|_, w| w.en().set_bit());
 }
