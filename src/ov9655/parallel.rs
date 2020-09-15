@@ -62,6 +62,12 @@ pub fn dma2_setup(dma_size: u16, dest_addr: u32) {
     let dma2_regs = unsafe { &(*DMA2::ptr()) };
 
     unsafe {
+        // Clear any stale interrupts
+        let dma2_int_status_lo = dma2_regs.lisr.read().bits();
+        let dma2_int_status_hi = dma2_regs.hisr.read().bits();
+        dma2_regs.lifcr.write(|w| w.bits(dma2_int_status_lo));
+        dma2_regs.hifcr.write(|w| w.bits(dma2_int_status_hi));
+
         // Configure DMA
         dma2_regs.st[DMA_STREAM].cr.write(|w| {
             w
@@ -74,12 +80,12 @@ pub fn dma2_setup(dma_size: u16, dest_addr: u32) {
                 // Disable HTIE interrupt
                 .htie()
                 .clear_bit()
-                // Enable TCIC interrupt
+                // Enable TCIE interrupt
                 .tcie()
                 .set_bit()
-                // Peripheral is flow controller
+                // DMA is flow controller
                 .pfctrl()
-                .set_bit()
+                .clear_bit()
                 // Direction: Peripheral to memory
                 .dir()
                 .bits(0)
@@ -94,14 +100,14 @@ pub fn dma2_setup(dma_size: u16, dest_addr: u32) {
                 .set_bit()
                 // Transfer a word at a time from the peripheral
                 .psize()
-                .bits(0)
-                // Place into memory in half-word alignment (RGB565)
+                .bits32()
+                // Place into memory in half-word alignment for RGB565
                 .msize()
-                .bits(1)
+                .bits16()
                 // Priority level is high
                 .pl()
                 .bits(0x3)
-                // No double buffer mode for now (change for ping-pong)
+                // No double buffer mode for now (change later for ping-pong)
                 .dbm()
                 .clear_bit()
                 // No peripheral burst, single word
@@ -118,9 +124,9 @@ pub fn dma2_setup(dma_size: u16, dest_addr: u32) {
         // Configure FIFO
         dma2_regs.st[DMA_STREAM].fcr.write(|w| {
             w
-                // Set FIFO threshold to full
+                // Set FIFO threshold to 1/4 full (1 word)
                 .fth()
-                .bits(0x3)
+                .bits(0x0)
                 // Enable FIFO mode (disable direct mode)
                 .dmdis()
                 .set_bit()

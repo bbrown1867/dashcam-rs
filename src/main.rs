@@ -107,37 +107,45 @@ fn main() -> ! {
     // Start capture!
     dcmi_capture();
 
-    let mut do_it = true;
-    while do_it {
+    // Capture a single image
+    let mut cap_done = false;
+    let mut dma_done = false;
+    let mut cnt = 0;
+    while (!cap_done || !dma_done) && cnt < 5 {
         // Wait for the interrupt to fire
         free(|cs| {
             let dcmi_int_status = DCMI_INT_STATUS.borrow(cs).get();
             let dma2_int_status = DMA2_INT_STATUS.borrow(cs).get();
             if dcmi_int_status != 0 || dma2_int_status != 0 {
+                rprintln!("DCMI Int = {:x}", dcmi_int_status);
+                rprintln!("DMA2 Int = {:x}", dma2_int_status);
+
                 // Debug code, will remove later
                 let dcmi_regs = unsafe { &(*DCMI::ptr()) };
-                let dma2_regs = unsafe { &(*DMA2::ptr()) };
-                let dcmi_cr = dcmi_regs.cr.read().bits();
-
-                rprintln!("DMA2 Int = {:x}", dma2_int_status);
-                rprintln!("DMA2 LISR = {:x}", dma2_regs.lisr.read().bits());
-
-                rprintln!("DCMI CR = {:x}", dcmi_cr);
+                rprintln!("DCMI CR = {:x}", dcmi_regs.cr.read().bits());
                 rprintln!("DCMI SR = {:x}", dcmi_regs.sr.read().bits());
-                rprintln!("DCMI Int = {:x}", dcmi_int_status);
-
-                memory_dump(mem_addr_sram2, 4);
 
                 // Stop after we capture a single frame
-                if dcmi_cr & 0x1 == 0 {
-                    do_it = false;
+                if dcmi_int_status & 0x1 == 0x1 {
+                    rprintln!("DCMI capture complete!");
+                    cap_done = true;
+                }
+
+                if dma2_int_status & 0x800 == 0x800 {
+                    rprintln!("DMA transfer complete!");
+                    dma_done = true;
                 }
 
                 DCMI_INT_STATUS.borrow(cs).set(0);
                 DMA2_INT_STATUS.borrow(cs).set(0);
+
+                cnt += 1;
             }
         });
     }
+
+    // Debug code, will remove later
+    memory_dump(mem_addr_sram2, 4);
 
     loop {
         delay.delay_ms(500_u16);
@@ -250,10 +258,7 @@ fn DMA2_STREAM1() {
         if DMA2_INT_STATUS.borrow(cs).get() == 0 {
             // Read interrupt status
             let dma2_regs = unsafe { &(*DMA2::ptr()) };
-            let mut int_status = dma2_regs.lisr.read().bits();
-
-            // Mask away interrupts that aren't channel 1
-            int_status &= 0xF40;
+            let int_status = dma2_regs.lisr.read().bits();
 
             // If an interrupt fired
             if int_status != 0 {
