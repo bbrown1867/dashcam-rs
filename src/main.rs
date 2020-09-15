@@ -98,35 +98,70 @@ fn main() -> ! {
     // Setup the DCMI peripheral to interface with the OV9655
     dcmi_setup();
 
-    // Setup DMA2 to transfer one row of pixels (16-bit each) into memory
+    // Setup DMA2 to transfer one row of pixels (2 bytes each) into memory
     let dma_size: u16 = 320;
     let mem_addr_sram2: u32 = 0x2007_C000;
+    memory_clear(mem_addr_sram2, (2 * dma_size).into());
     dma2_setup(dma_size, mem_addr_sram2);
 
     // Start capture!
     dcmi_capture();
 
-    loop {
+    let mut do_it = true;
+    while do_it {
         // Wait for the interrupt to fire
         free(|cs| {
             let dcmi_int_status = DCMI_INT_STATUS.borrow(cs).get();
             let dma2_int_status = DMA2_INT_STATUS.borrow(cs).get();
             if dcmi_int_status != 0 || dma2_int_status != 0 {
-                let buffer_pointer = mem_addr_sram2 as *const _;
-                let buffer: [u16; 4] = unsafe { *buffer_pointer };
+                // Debug code, will remove later
+                let dcmi_regs = unsafe { &(*DCMI::ptr()) };
+                let dma2_regs = unsafe { &(*DMA2::ptr()) };
+                let dcmi_cr = dcmi_regs.cr.read().bits();
 
-                rprintln!("DCMI Int = {}", dcmi_int_status);
-                rprintln!("DMA2 Int = {}", dma2_int_status);
-                rprintln!("Buffer:");
-                rprintln!("\t{}", buffer[0]);
-                rprintln!("\t{}", buffer[1]);
-                rprintln!("\t{}", buffer[2]);
-                rprintln!("\t{}", buffer[3]);
+                rprintln!("DMA2 Int = {:x}", dma2_int_status);
+                rprintln!("DMA2 LISR = {:x}", dma2_regs.lisr.read().bits());
+
+                rprintln!("DCMI CR = {:x}", dcmi_cr);
+                rprintln!("DCMI SR = {:x}", dcmi_regs.sr.read().bits());
+                rprintln!("DCMI Int = {:x}", dcmi_int_status);
+
+                memory_dump(mem_addr_sram2, 4);
+
+                // Stop after we capture a single frame
+                if dcmi_cr & 0x1 == 0 {
+                    do_it = false;
+                }
 
                 DCMI_INT_STATUS.borrow(cs).set(0);
                 DMA2_INT_STATUS.borrow(cs).set(0);
             }
         });
+    }
+
+    loop {
+        delay.delay_ms(500_u16);
+    }
+}
+
+fn memory_clear(addr: u32, size: u32) {
+    for i in 0..size {
+        unsafe {
+            let curr: *mut u8 = (addr + i) as *mut u8;
+            core::ptr::write_volatile(curr, 0);
+        }
+    }
+}
+
+fn memory_dump(addr: u32, size: u32) {
+    rprintln!("{} bytes located at address {:x}:", size, addr);
+
+    for i in 0..size {
+        unsafe {
+            let curr: *mut u8 = (addr + i) as *mut u8;
+            let val: u8 = core::ptr::read_volatile(curr);
+            rprintln!("\t{:x}", val);
+        }
     }
 }
 
@@ -135,11 +170,12 @@ fn qvga_setup(reg_vals: &mut RegMap) {
     reg_vals.insert(Register::COM_CNTRL_07, 0x03).unwrap();
 
     // Pin configuration:
-    // --> Bit 6: Set to 1 to change HREF to HSYNC, which STM32 DCMI expects
-    // --> Bit 4: PCLK reverse, assuming that means falling edge
-    // --> Bit 1: VSYNC negative, unclear what this means - we are using active high
-    // --> Bit 0: HSYNC negative, unclear what this means - we are using active high
-    reg_vals.insert(Register::COM_CNTRL_10, 0x50).unwrap();
+    // --> Bit 6: Set this bit to change HREF pin to be HSYNC signals
+    // --> Bit 4: PCLK reverse - PCLK is falling edge in datasheet, so reverse is rising
+    // --> Bit 3: HREF reverse - HREF active high in datasheet, so reverse is active low
+    // --> Bit 1: VSYNC negative - VSYNC active low in datasheet, so reverse is active high
+    // --> Bit 0: HSYNC negative - HSYNC polarity unclear in datasheet, ignore and use HREF
+    reg_vals.insert(Register::COM_CNTRL_10, 0x00).unwrap();
 
     // RGB 565 data format with full output range (0x00 --> 0xFF)
     reg_vals.insert(Register::COM_CNTRL_15, 0x10).unwrap();
