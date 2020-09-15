@@ -93,7 +93,7 @@ dependencies = [
  "heapless",
  "nucleof767zi-rs",
  "rtt-target",
- "stm32f7xx-hal 0.2.0",
+ "stm32f7xx-hal",
 ]
 
 [[package]]
@@ -174,7 +174,7 @@ dependencies = [
  "cortex-m",
  "cortex-m-rt",
  "embedded-hal",
- "stm32f7xx-hal 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "stm32f7xx-hal",
 ]
 
 [[package]]
@@ -251,22 +251,6 @@ dependencies = [
  "cortex-m",
  "cortex-m-rt",
  "vcell",
-]
-
-[[package]]
-name = "stm32f7xx-hal"
-version = "0.2.0"
-dependencies = [
- "as-slice",
- "bare-metal",
- "cast",
- "cortex-m",
- "cortex-m-rt",
- "embedded-hal",
- "micromath",
- "nb 0.1.3",
- "stm32f7",
- "void",
 ]
 
 [[package]]
