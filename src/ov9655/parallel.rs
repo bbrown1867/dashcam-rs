@@ -9,6 +9,9 @@ use stm32f7xx_hal::device::{interrupt, DCMI, DMA2};
 const DMA_STREAM: usize = 1;
 const DMA_CHANNEL: u8 = 1;
 
+// DCMI data register address (TODO: Get from PAC)
+const DCMI_DR_ADDR: u32 = 0x5005_0000 + 0x28;
+
 /// Setup the DCMI peripheral to interface with the OV9655.
 pub fn dcmi_setup() {
     // TODO: No HAL driver exists for DCMI
@@ -57,7 +60,7 @@ pub fn dcmi_capture() {
 }
 
 /// Setup DMA2 to transfer image data from DCMI to memory.
-pub fn dma2_setup(dma_size: u16, dest_addr: u32) {
+pub fn dma2_setup(dest_addr: u32, dma_size: u16) {
     // TODO: No HAL driver exists for DMA with DCMI
     let dma2_regs = unsafe { &(*DMA2::ptr()) };
 
@@ -71,52 +74,52 @@ pub fn dma2_setup(dma_size: u16, dest_addr: u32) {
         // Configure DMA
         dma2_regs.st[DMA_STREAM].cr.write(|w| {
             w
-                // Enable DME interrupt
+                // DME interrupt
                 .dmeie()
                 .set_bit()
-                // Enable TCIE interrupt
+                // TCIE interrupt
                 .teie()
                 .set_bit()
-                // Disable HTIE interrupt
+                // HTIE interrupt
                 .htie()
-                .clear_bit()
-                // Enable TCIE interrupt
+                .set_bit()
+                // TCIE interrupt
                 .tcie()
                 .set_bit()
-                // DMA is flow controller
+                // Flow controller (DMA or peripheral)
                 .pfctrl()
                 .clear_bit()
-                // Direction: Peripheral to memory
+                // Direction
                 .dir()
-                .bits(0)
-                // Disable circular mode
+                .peripheral_to_memory()
+                // Circular mode
                 .circ()
                 .clear_bit()
-                // Don't increment peripheral address
+                // Peripheral address increment
                 .pinc()
                 .clear_bit()
-                // Increment the memory address
+                // Memory address increment
                 .minc()
                 .set_bit()
-                // Transfer a word at a time from the peripheral
+                // Peripheral transfer size (in words)
                 .psize()
                 .bits32()
-                // Place into memory in half-word alignment for RGB565
+                // Memory transfer size (in words)
                 .msize()
-                .bits16()
-                // Priority level is high
+                .bits32()
+                // Priority level
                 .pl()
-                .bits(0x3)
-                // No double buffer mode for now (change later for ping-pong)
+                .high()
+                // Double buffer mode
                 .dbm()
                 .clear_bit()
-                // No peripheral burst, single word
+                // Peripheral burst
                 .pburst()
-                .bits(0)
-                // No memory burst, single word
+                .single()
+                // Memory burst
                 .mburst()
-                .bits(0)
-                // Channel = DMA_CHANNEL
+                .incr4()
+                // Channel
                 .chsel()
                 .bits(DMA_CHANNEL)
         });
@@ -124,13 +127,13 @@ pub fn dma2_setup(dma_size: u16, dest_addr: u32) {
         // Configure FIFO
         dma2_regs.st[DMA_STREAM].fcr.write(|w| {
             w
-                // Set FIFO threshold to 1/4 full (1 word)
+                // FIFO threshold
                 .fth()
-                .bits(0x0)
-                // Enable FIFO mode (disable direct mode)
+                .full()
+                // FIFO mode (not direct mode)
                 .dmdis()
                 .set_bit()
-                // Enable FEIE interrupt
+                // FEIE interrupt
                 .feie()
                 .set_bit()
         });
@@ -140,13 +143,12 @@ pub fn dma2_setup(dma_size: u16, dest_addr: u32) {
     }
 
     // Configure addresses and size
-    let dcmi_dr_addr: u32 = 0x5005_0000 + 0x28;
     dma2_regs.st[DMA_STREAM]
         .ndtr
         .write(|w| w.ndt().bits(dma_size));
     dma2_regs.st[DMA_STREAM]
         .par
-        .write(|w| w.pa().bits(dcmi_dr_addr));
+        .write(|w| w.pa().bits(DCMI_DR_ADDR));
     dma2_regs.st[DMA_STREAM]
         .m0ar
         .write(|w| w.m0a().bits(dest_addr));
