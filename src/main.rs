@@ -8,6 +8,7 @@ use dashcam_rs::ov9655::sccb::{RegMap, Register, SCCB};
 use dashcam_rs::pins::pin_config_nucleo;
 
 use core::cell::Cell;
+use core::convert::TryInto;
 use core::panic::PanicInfo;
 use cortex_m::interrupt::{free, Mutex};
 use cortex_m_rt::entry;
@@ -95,80 +96,79 @@ fn main() -> ! {
     sccb.apply_config(&mut i2c, &reg_vals).unwrap();
     rprintln!("QVGA setup complete!");
 
+    // DMA transfer description: QVGA resolution (320x240) + RGB565 format (2 bytes each pixel)
+    let dma_size_bytes: u32 = 320 * 240 * 2;
+    let dma_size_words: u32 = (dma_size_bytes) / 4;
+    let mem_addr_sram: u32 = 0x2001_0000;
+
     // Setup the DCMI peripheral to interface with the OV9655
     dcmi_setup();
 
-    // Setup DMA2 to transfer one row of pixels (2 bytes each) into memory
-    let dma_size: u16 = 320;
-    let mem_addr_sram2: u32 = 0x2007_C000;
-    memory_clear(mem_addr_sram2, (2 * dma_size).into());
-    dma2_setup(dma_size, mem_addr_sram2);
+    // Write some dummy values to tell if the DMA transfered anything
+    memory_set(mem_addr_sram, dma_size_bytes, 0xAA);
+    memory_get(mem_addr_sram, 4);
+
+    // Setup DMA2 to transfer one image worth of words into memory
+    dma2_setup(mem_addr_sram, dma_size_words.try_into().unwrap());
 
     // Start capture!
     dcmi_capture();
 
     // Capture a single image
+    rprintln!("Starting capture...");
     let mut cap_done = false;
-    let mut dma_done = false;
-    let mut cnt = 0;
-    while (!cap_done || !dma_done) && cnt < 5 {
+    while !cap_done {
         // Wait for the interrupt to fire
         free(|cs| {
             let dcmi_int_status = DCMI_INT_STATUS.borrow(cs).get();
             let dma2_int_status = DMA2_INT_STATUS.borrow(cs).get();
             if dcmi_int_status != 0 || dma2_int_status != 0 {
-                rprintln!("DCMI Int = {:x}", dcmi_int_status);
-                rprintln!("DMA2 Int = {:x}", dma2_int_status);
+                rprintln!("DCMI Int = {:X}", dcmi_int_status);
+                rprintln!("DMA2 Int = {:X}", dma2_int_status);
 
                 // Debug code, will remove later
                 let dcmi_regs = unsafe { &(*DCMI::ptr()) };
-                rprintln!("DCMI CR = {:x}", dcmi_regs.cr.read().bits());
-                rprintln!("DCMI SR = {:x}", dcmi_regs.sr.read().bits());
+                rprintln!("DCMI CR = {:X}", dcmi_regs.cr.read().bits());
+                rprintln!("DCMI SR = {:X}", dcmi_regs.sr.read().bits());
 
-                // Stop after we capture a single frame
+                // Stop after we capture a single frame (for now)
                 if dcmi_int_status & 0x1 == 0x1 {
-                    rprintln!("DCMI capture complete!");
+                    rprintln!("Capture complete!");
                     cap_done = true;
-                }
-
-                if dma2_int_status & 0x800 == 0x800 {
-                    rprintln!("DMA transfer complete!");
-                    dma_done = true;
                 }
 
                 DCMI_INT_STATUS.borrow(cs).set(0);
                 DMA2_INT_STATUS.borrow(cs).set(0);
-
-                cnt += 1;
             }
         });
     }
 
     // Debug code, will remove later
-    memory_dump(mem_addr_sram2, 4);
+    memory_get(mem_addr_sram, 4);
+    memory_get(mem_addr_sram + (dma_size_bytes / 2), 4);
 
     loop {
         delay.delay_ms(500_u16);
     }
 }
 
-fn memory_clear(addr: u32, size: u32) {
+fn memory_set(addr: u32, size: u32, val: u8) {
     for i in 0..size {
         unsafe {
             let curr: *mut u8 = (addr + i) as *mut u8;
-            core::ptr::write_volatile(curr, 0);
+            core::ptr::write_volatile(curr, val);
         }
     }
 }
 
-fn memory_dump(addr: u32, size: u32) {
-    rprintln!("{} bytes located at address {:x}:", size, addr);
+fn memory_get(addr: u32, size: u32) {
+    rprintln!("{} bytes located at address {:X}:", size, addr);
 
     for i in 0..size {
         unsafe {
             let curr: *mut u8 = (addr + i) as *mut u8;
             let val: u8 = core::ptr::read_volatile(curr);
-            rprintln!("\t{:x}", val);
+            rprintln!("\t{:X}", val);
         }
     }
 }
