@@ -98,13 +98,13 @@ fn main() -> ! {
 
     // DMA transfer description: QVGA resolution (320x240) + RGB565 format (2 bytes each pixel)
     let dma_size_bytes: u32 = 320 * 240 * 2;
-    let dma_size_words: u32 = (dma_size_bytes) / 4;
+    let dma_size_words: u32 = dma_size_bytes / 4;
     let mem_addr_sram: u32 = 0x2001_0000;
 
     // Setup the DCMI peripheral to interface with the OV9655
     dcmi_setup();
 
-    // Write some dummy values to tell if the DMA transfered anything
+    // Debug code, will remove later
     memory_set(mem_addr_sram, dma_size_bytes, 0xAA);
     memory_get(mem_addr_sram, 4);
 
