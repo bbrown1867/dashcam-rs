@@ -101,10 +101,10 @@ pub fn dma2_setup(dest_addr: u32, dma_size: u16) {
                 // Memory address increment
                 .minc()
                 .set_bit()
-                // Peripheral transfer size (in words)
+                // Peripheral transfer size
                 .psize()
                 .bits32()
-                // Memory transfer size (in words)
+                // Memory transfer size
                 .msize()
                 .bits32()
                 // Priority level
