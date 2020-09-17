@@ -1,11 +1,14 @@
-//! A prototype dashboard camera.
+//! Prototype dashboard camera.
 
 #![no_main]
 #![no_std]
 
-use dashcam_rs::ov9655::parallel::*;
-use dashcam_rs::ov9655::sccb::{RegMap, Register, SCCB};
-use dashcam_rs::pins::pin_config_nucleo;
+pub mod ov9655;
+pub mod pins;
+
+use ov9655::parallel::*;
+use ov9655::sccb::{RegMap, Register, SCCB};
+use pins::pin_config_nucleo;
 
 use core::cell::Cell;
 use core::convert::TryInto;
