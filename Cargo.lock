@@ -91,7 +91,6 @@ dependencies = [
  "cortex-m-rt",
  "embedded-hal",
  "heapless",
- "nucleof767zi-rs",
  "rtt-target",
  "stm32f7xx-hal",
 ]
@@ -165,17 +164,6 @@ name = "nb"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "546c37ac5d9e56f55e73b677106873d9d9f5190605e41a856503623648488cae"
-
-[[package]]
-name = "nucleof767zi-rs"
-version = "0.1.0"
-source = "git+https://github.com/bbrown1867/nucleof767zi-rs#44f175a52c28026da3614e19a71ba8f542ea26b8"
-dependencies = [
- "cortex-m",
- "cortex-m-rt",
- "embedded-hal",
- "stm32f7xx-hal",
-]
 
 [[package]]
 name = "proc-macro2"
@@ -256,8 +244,6 @@ dependencies = [
 [[package]]
 name = "stm32f7xx-hal"
 version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3146d2ffde605a5187a72419cda448a34daf057b27a178280b17f8a480501dc6"
 dependencies = [
  "as-slice",
  "bare-metal",

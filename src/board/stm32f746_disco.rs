@@ -1,8 +1,9 @@
-//! GPIO pin configuration for the board.
+//! Board specific functions for the STM32F746G Discovery Board.
 
 use stm32f7xx_hal::{
-    device, gpio,
+    pac, gpio,
     gpio::{Alternate, Speed, AF4},
+    time::MegaHertz,
     prelude::*,
 };
 
@@ -10,35 +11,33 @@ use stm32f7xx_hal::{
 /// I2C driver. Note that the peripherals are stolen, so this should only be done during init
 /// to be safe.
 ///
-/// Pin configuration for the Nucleo-F767ZI:
+/// Pin configuration:
 ///
-///     I2C1 SCL:   PB8  --> Nucleo CN7.2   (D15)  --> OV9655 SIOC
-///     I2C1 SDA:   PB9 <--> Nucleo CN7.4   (D14) <--> OV9655 SIOD
-///     MCO2:       PC9  --> Nucleo CN8.4   (D44)  --> OV9655 XCLK
-///     DCMI PCLK:  PA6  <-- Nucleo CN7.12  (D12) <--  OV9655 PCLK
-///     DCMI HSYNC: PA4  <-- Nucleo CN7.17  (D24) <--  OV9655 HREF
-///     DCMI VSYNC: PG9  <-- Nucleo CN11.63       <--  OV9655 VSYNC
-///     DCMI D0:    PC6  <-- Nucleo CN7.1   (D16) <--  OV9655 D2
-///     DCMI D1:    PC7  <-- Nucleo CN7.11  (D21) <--  OV9655 D3
-///     DCMI D2:    PC8  <-- Nucleo CN8.2   (D43) <--  OV9655 D4
-///     DCMI D3:    PE1  <-- Nucleo CN11.61       <--  OV9655 D5
-///     DCMI D4:    PE4  <-- Nucleo CN9.16  (D57) <--  OV9655 D6
-///     DCMI D5:    PB6  <-- Nucleo CN10.13 (D26) <--  OV9655 D7
-///     DCMI D6:    PE5  <-- Nucleo CN9.18  (D58) <--  OV9655 D8
-///     DCMI D7:    PE6  <-- Nucleo CN9.20  (D59) <--  OV9655 D9
-pub fn pin_config_nucleo() -> (
+///     I2C1 SCL:   PB8  --> OV9655 SIOC
+///     I2C1 SDA:   PB9 <--> OV9655 SIOD
+///     (HW OSC 24M)     --> OV9655 XCLK
+///     DCMI PCLK:  PA6  <-- OV9655 PCLK
+///     DCMI HSYNC: PA4  <-- OV9655 HREF
+///     DCMI VSYNC: PG9  <-- OV9655 VSYNC
+///     DCMI D0:    PH9  <-- OV9655 D2
+///     DCMI D1:    PH10 <-- OV9655 D3
+///     DCMI D2:    PH11 <-- OV9655 D4
+///     DCMI D3:    PH12 <-- OV9655 D5
+///     DCMI D4:    PH14 <-- OV9655 D6
+///     DCMI D5:    PD3  <-- OV9655 D7
+///     DCMI D6:    PE5  <-- OV9655 D8
+///     DCMI D7:    PE6  <-- OV9655 D9
+pub fn configure_pins() -> (
     gpio::gpiob::PB8<Alternate<AF4>>,
     gpio::gpiob::PB9<Alternate<AF4>>,
 ) {
-    let pac_periph = unsafe { device::Peripherals::steal() };
+    let pac_periph = unsafe { pac::Peripherals::steal() };
     let gpioa = pac_periph.GPIOA.split();
     let gpiob = pac_periph.GPIOB.split();
-    let gpioc = pac_periph.GPIOC.split();
+    let gpiod = pac_periph.GPIOD.split();
     let gpioe = pac_periph.GPIOE.split();
     let gpiog = pac_periph.GPIOG.split();
-
-    // Configure MCO2 for OV9655 XCLK
-    let _xclk = gpioc.pc9.into_alternate_af0().set_speed(Speed::VeryHigh);
+    let gpioh = pac_periph.GPIOH.split();
 
     // Configure I2C1 for OV9655 SCCB
     let scl = gpiob
@@ -74,43 +73,43 @@ pub fn pin_config_nucleo() -> (
         .set_open_drain()
         .set_speed(Speed::VeryHigh);
 
-    let _dcmi_d0 = gpioc
-        .pc6
+    let _dcmi_d0 = gpioh
+        .ph9
         .into_alternate_af13()
         .internal_pull_up(true)
         .set_open_drain()
         .set_speed(Speed::VeryHigh);
 
-    let _dcmi_d1 = gpioc
-        .pc7
+    let _dcmi_d1 = gpioh
+        .ph10
         .into_alternate_af13()
         .internal_pull_up(true)
         .set_open_drain()
         .set_speed(Speed::VeryHigh);
 
-    let _dcmi_d2 = gpioc
-        .pc8
+    let _dcmi_d2 = gpioh
+        .ph11
         .into_alternate_af13()
         .internal_pull_up(true)
         .set_open_drain()
         .set_speed(Speed::VeryHigh);
 
-    let _dcmi_d3 = gpioe
-        .pe1
+    let _dcmi_d3 = gpioh
+        .ph12
         .into_alternate_af13()
         .internal_pull_up(true)
         .set_open_drain()
         .set_speed(Speed::VeryHigh);
 
-    let _dcmi_d4 = gpioe
-        .pe4
+    let _dcmi_d4 = gpioh
+        .ph14
         .into_alternate_af13()
         .internal_pull_up(true)
         .set_open_drain()
         .set_speed(Speed::VeryHigh);
 
-    let _dcmi_d5 = gpiob
-        .pb6
+    let _dcmi_d5 = gpiod
+        .pd3
         .into_alternate_af13()
         .internal_pull_up(true)
         .set_open_drain()
@@ -131,4 +130,9 @@ pub fn pin_config_nucleo() -> (
         .set_speed(Speed::VeryHigh);
 
     (scl, sda)
+}
+
+/// The 25 MHz external oscillator on the board (X2) is the source for HSE
+pub fn get_hse_freq() -> MegaHertz {
+    25.mhz()
 }

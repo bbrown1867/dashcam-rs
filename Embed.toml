@@ -1,8 +1,9 @@
 [default.general]
-chip = "STM32F767ZITx"
+chip = "STM32F746NG"
+log_level = "WARN"
 
 [default.probe]
-protocol = "SWD"
+protocol = "JTAG"
 
 [default.flashing]
 # Whether or not the target should be flashed.

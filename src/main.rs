@@ -3,12 +3,12 @@
 #![no_main]
 #![no_std]
 
+pub mod board;
 pub mod ov9655;
-pub mod pins;
 
 use ov9655::parallel::*;
 use ov9655::sccb::{RegMap, Register, SCCB};
-use pins::pin_config_nucleo;
+use board::stm32f746_disco::{configure_pins, get_hse_freq};
 
 use core::cell::Cell;
 use core::convert::TryInto;
@@ -18,7 +18,7 @@ use cortex_m_rt::entry;
 use rtt_target::{rprintln, rtt_init, set_print_channel};
 use stm32f7xx_hal::{
     delay::Delay,
-    device::{self, DCMI, DMA2, RCC},
+    pac::{self, DCMI, DMA2},
     i2c::{BlockingI2c, Mode},
     interrupt,
     prelude::*,
@@ -45,36 +45,19 @@ fn main() -> ! {
     set_print_channel(channels.up.0);
 
     // Get peripherals
-    let pac_periph = device::Peripherals::take().unwrap();
+    let pac_periph = pac::Peripherals::take().unwrap();
     let cm_periph = cortex_m::Peripherals::take().unwrap();
 
-    /********** BEGIN: CLOCK CONFG **********/
-
-    // Nucleo board: HSE = 8 MHz, use as SYSCLK source
+    // Clock config: Set HSE to reflect the board and ramp up SYSCLK to max possible speed
     let mut rcc = pac_periph.RCC.constrain();
-    let hse_cfg = HSEClock::new(8.mhz(), HSEClockMode::Oscillator);
+    let hse_cfg = HSEClock::new(get_hse_freq(), HSEClockMode::Oscillator);
     let clocks = rcc.cfgr.hse(hse_cfg).sysclk(216.mhz()).freeze();
-
-    // TODO: Clock config for MCO2, DCMI, and DMA2 don't appear to be in HAL
-    let rcc_regs = unsafe { &(*RCC::ptr()) };
-
-    // Configure microcontroller clock output (MCO) 2 for OV9655 XCLK. OV9655 requires that it is
-    // 10 MHz <= XCLK <= 48 MHz. Can't use HSE (too slow) so use SYSCLK which will be 216 MHz.
-    // Prescale it by 5 to slow it down to 43.2 MHz.
-    rcc_regs.cfgr.modify(|_, w| w.mco2().sysclk());
-    rcc_regs.cfgr.modify(|_, w| w.mco2pre().div5());
-
-    // Enable DCMI and DMA2 clocks
-    rcc_regs.ahb2enr.modify(|_, w| w.dcmien().set_bit());
-    rcc_regs.ahb1enr.modify(|_, w| w.dma2en().set_bit());
-
-    /********** END: CLOCK CONFG **********/
 
     // Delay configuration
     let mut delay = Delay::new(cm_periph.SYST, clocks);
 
     // GPIO configuration
-    let i2c_pins = pin_config_nucleo();
+    let i2c_pins = configure_pins();
 
     // I2C1 configuration (SCCB)
     let mut i2c = BlockingI2c::i2c1(
@@ -86,18 +69,20 @@ fn main() -> ! {
         10000,
     );
 
-    // Init SCCB module and establish communication with the OV9655
+    // Init SCCB module
     let sccb = SCCB::new(&mut i2c);
+
+    // Establish communication with the OV9655
     sccb.reset(&mut i2c).unwrap();
     delay.delay_ms(1000_u16);
     sccb.check_id(&mut i2c).unwrap();
-    rprintln!("SCCB initialization complete!");
+    rprintln!("Successfully communicated with the OV9655 over SCCB!");
 
     // Configure the OV9655 for QVGA (320x240) resolution with RGB565
     let mut reg_vals = RegMap::new();
     qvga_setup(&mut reg_vals);
     sccb.apply_config(&mut i2c, &reg_vals).unwrap();
-    rprintln!("QVGA setup complete!");
+    rprintln!("QVGA mode setup for the OV9655 complete!");
 
     // DMA transfer description: QVGA resolution (320x240) + RGB565 format (2 bytes each pixel)
     let dma_size_bytes: u32 = 320 * 240 * 2;
@@ -118,7 +103,8 @@ fn main() -> ! {
     dcmi_capture();
 
     // Capture a single image
-    rprintln!("Starting capture...");
+    rprintln!("DCMI and DMA setup complete!");
+    rprintln!("Starting image capture...");
     let mut cap_done = false;
     while !cap_done {
         // Wait for the interrupt to fire
