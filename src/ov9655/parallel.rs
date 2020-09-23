@@ -3,7 +3,7 @@
 //! this module.
 
 use cortex_m::peripheral::NVIC;
-use stm32f7xx_hal::device::{interrupt, DCMI, DMA2};
+use stm32f7xx_hal::pac::{interrupt, RCC, DCMI, DMA2};
 
 // DMA2-Stream 1-Channel 1 is used to interface with DCMI
 const DMA_STREAM: usize = 1;
@@ -16,6 +16,10 @@ const DCMI_DR_ADDR: u32 = 0x5005_0000 + 0x28;
 pub fn dcmi_setup() {
     // TODO: No HAL driver exists for DCMI
     let dcmi_regs = unsafe { &(*DCMI::ptr()) };
+    let rcc_regs = unsafe { &(*RCC::ptr()) };
+
+    // Enable peripheral clock
+    rcc_regs.ahb2enr.modify(|_, w| w.dcmien().set_bit());
 
     // Set both SYNC signals to be active high and use snapshot mode. Default fields not set:
     //     - VSYNC active low (0)
@@ -63,6 +67,10 @@ pub fn dcmi_capture() {
 pub fn dma2_setup(dest_addr: u32, dma_size: u16) {
     // TODO: No HAL driver exists for DMA with DCMI
     let dma2_regs = unsafe { &(*DMA2::ptr()) };
+    let rcc_regs = unsafe { &(*RCC::ptr()) };
+
+    // Enable peripheral clock
+    rcc_regs.ahb1enr.modify(|_, w| w.dma2en().set_bit());
 
     unsafe {
         // Clear any stale interrupts
