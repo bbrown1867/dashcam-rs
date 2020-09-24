@@ -15,4 +15,5 @@ stm32f7xx-hal = { path = "../stm32f7xx-hal", features = ["rt", "stm32f746"] }
 
 # Runtime support
 heapless = "0.5.5"
+embedded-graphics = "0.6.1"
 rtt-target = { version = "0.2.2", features = ["cortex-m"] }
