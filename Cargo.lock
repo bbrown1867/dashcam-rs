@@ -89,10 +89,20 @@ version = "0.1.0"
 dependencies = [
  "cortex-m",
  "cortex-m-rt",
+ "embedded-graphics",
  "embedded-hal",
  "heapless",
  "rtt-target",
  "stm32f7xx-hal",
+]
+
+[[package]]
+name = "embedded-graphics"
+version = "0.6.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "40a69991ceb896bd4810a0cf2bcc46fc94b7860573c71f965d8e5b3d66942fed"
+dependencies = [
+ "byteorder",
 ]
 
 [[package]]

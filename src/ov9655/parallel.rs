@@ -3,7 +3,7 @@
 //! this module.
 
 use cortex_m::peripheral::NVIC;
-use stm32f7xx_hal::pac::{interrupt, RCC, DCMI, DMA2};
+use stm32f7xx_hal::pac::{interrupt, DCMI, DMA2, RCC};
 
 // DMA2-Stream 1-Channel 1 is used to interface with DCMI
 const DMA_STREAM: usize = 1;

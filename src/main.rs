@@ -6,21 +6,28 @@
 pub mod board;
 pub mod ov9655;
 
+use board::stm32f746_disco::{board_config_ov9655, board_config_screen, board_get_hse};
 use ov9655::parallel::*;
 use ov9655::sccb::{RegMap, Register, SCCB};
-use board::stm32f746_disco::{configure_pins, get_hse_freq};
 
 use core::cell::Cell;
 use core::convert::TryInto;
 use core::panic::PanicInfo;
 use cortex_m::interrupt::{free, Mutex};
 use cortex_m_rt::entry;
+use embedded_graphics::{
+    egcircle, egrectangle, egtext,
+    fonts::Font6x8,
+    pixelcolor::{Rgb565, RgbColor},
+    prelude::*,
+    primitive_style, text_style,
+};
 use rtt_target::{rprintln, rtt_init, set_print_channel};
 use stm32f7xx_hal::{
     delay::Delay,
-    pac::{self, DCMI, DMA2},
     i2c::{BlockingI2c, Mode},
     interrupt,
+    pac::{self, DCMI, DMA2},
     prelude::*,
     rcc::{HSEClock, HSEClockMode},
 };
@@ -50,14 +57,14 @@ fn main() -> ! {
 
     // Clock config: Set HSE to reflect the board and ramp up SYSCLK to max possible speed
     let mut rcc = pac_periph.RCC.constrain();
-    let hse_cfg = HSEClock::new(get_hse_freq(), HSEClockMode::Oscillator);
+    let hse_cfg = HSEClock::new(board_get_hse(), HSEClockMode::Oscillator);
     let clocks = rcc.cfgr.hse(hse_cfg).sysclk(216.mhz()).freeze();
 
     // Delay configuration
     let mut delay = Delay::new(cm_periph.SYST, clocks);
 
-    // GPIO configuration
-    let i2c_pins = configure_pins();
+    // OV9655 GPIO configuration
+    let i2c_pins = board_config_ov9655();
 
     // I2C1 configuration (SCCB)
     let mut i2c = BlockingI2c::i2c1(
@@ -83,6 +90,49 @@ fn main() -> ! {
     qvga_setup(&mut reg_vals);
     sccb.apply_config(&mut i2c, &reg_vals).unwrap();
     rprintln!("QVGA mode setup for the OV9655 complete!");
+
+    // Configure the LCD screen (debug only)
+    let mut display = board_config_screen();
+    let display = &mut display;
+
+    let r = egrectangle!(
+        top_left = (0, 0),
+        bottom_right = (479, 271),
+        style = primitive_style!(fill_color = Rgb565::new(0, 0b11110, 0b11011))
+    );
+
+    r.draw(display).ok();
+
+    let c1 = egcircle!(
+        center = (20, 20),
+        radius = 8,
+        style = primitive_style!(fill_color = Rgb565::new(0, 63, 0))
+    );
+
+    let c2 = egcircle!(
+        center = (25, 20),
+        radius = 8,
+        style = primitive_style!(fill_color = Rgb565::new(31, 0, 0))
+    );
+
+    let t = egtext!(
+        text = "Hello Rust!",
+        top_left = (100, 100),
+        style = text_style!(font = Font6x8, text_color = RgbColor::WHITE)
+    );
+
+    c1.draw(display).ok();
+    c2.draw(display).ok();
+    t.draw(display).ok();
+
+    for i in 0..300 {
+        let c1 = egcircle!(
+            center = (20 + i, 20),
+            radius = 8,
+            style = primitive_style!(fill_color = RgbColor::GREEN)
+        );
+        c1.draw(display).ok();
+    }
 
     // DMA transfer description: QVGA resolution (320x240) + RGB565 format (2 bytes each pixel)
     let dma_size_bytes: u32 = 320 * 240 * 2;
