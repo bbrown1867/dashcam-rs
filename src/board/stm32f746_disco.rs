@@ -144,8 +144,9 @@ pub fn board_config_ov9655() -> (
     (scl, sda)
 }
 
-/// Configure the LCD screen (for debug purposes). Note that the peripherals are stolen, so this
-/// should only be done during init to be safe.
+/// Configure the STM32F746G Discovery Board LCD screen (for debug purposes). Note that the
+/// peripherals are stolen, so this should only be done during init to be safe. This code is
+/// adapted from the screen example in the stm32f7xx-hal crate.
 pub fn board_config_screen() -> screen::DiscoDisplay<u16> {
     let pac_periph = unsafe { pac::Peripherals::steal() };
     let gpioe = pac_periph.GPIOE.split();
@@ -155,35 +156,35 @@ pub fn board_config_screen() -> screen::DiscoDisplay<u16> {
     let gpiok = pac_periph.GPIOK.split();
 
     // LCD data and timing signals
-    gpioe.pe4.into_alternate_af14().set_speed(Speed::VeryHigh); // LTCD_B0
-    gpiog.pg12.into_alternate_af9().set_speed(Speed::VeryHigh); // LTCD_B4
-    gpioi.pi9.into_alternate_af14().set_speed(Speed::VeryHigh); // LTCD_VSYNC
-    gpioi.pi10.into_alternate_af14().set_speed(Speed::VeryHigh); // LTCD_HSYNC
-    gpioi.pi13.into_alternate_af14().set_speed(Speed::VeryHigh); // LTCD_INT
-    gpioi.pi14.into_alternate_af14().set_speed(Speed::VeryHigh); // LTCD_CLK
-    gpioi.pi15.into_alternate_af14().set_speed(Speed::VeryHigh); // LTCD_R0
-    gpioj.pj0.into_alternate_af14().set_speed(Speed::VeryHigh); // LTCD_R1
-    gpioj.pj1.into_alternate_af14().set_speed(Speed::VeryHigh); // LTCD_R2
-    gpioj.pj2.into_alternate_af14().set_speed(Speed::VeryHigh); // LTCD_R3
-    gpioj.pj3.into_alternate_af14().set_speed(Speed::VeryHigh); // LTCD_R4
-    gpioj.pj4.into_alternate_af14().set_speed(Speed::VeryHigh); // LTCD_R5
-    gpioj.pj5.into_alternate_af14().set_speed(Speed::VeryHigh); // LTCD_R6
-    gpioj.pj6.into_alternate_af14().set_speed(Speed::VeryHigh); // LTCD_R7
-    gpioj.pj7.into_alternate_af14().set_speed(Speed::VeryHigh); // LTCD_G0
-    gpioj.pj8.into_alternate_af14().set_speed(Speed::VeryHigh); // LTCD_G1
-    gpioj.pj9.into_alternate_af14().set_speed(Speed::VeryHigh); // LTCD_G2
-    gpioj.pj10.into_alternate_af14().set_speed(Speed::VeryHigh); // LTCD_G3
-    gpioj.pj11.into_alternate_af14().set_speed(Speed::VeryHigh); // LTCD_G4
-    gpioj.pj13.into_alternate_af14().set_speed(Speed::VeryHigh); // LTCD_B1
-    gpioj.pj14.into_alternate_af14().set_speed(Speed::VeryHigh); // LTCD_B2
-    gpioj.pj15.into_alternate_af14().set_speed(Speed::VeryHigh); // LTCD_B3
-    gpiok.pk0.into_alternate_af14().set_speed(Speed::VeryHigh); // LTCD_G5
-    gpiok.pk1.into_alternate_af14().set_speed(Speed::VeryHigh); // LTCD_G6
-    gpiok.pk2.into_alternate_af14().set_speed(Speed::VeryHigh); // LTCD_G7
-    gpiok.pk4.into_alternate_af14().set_speed(Speed::VeryHigh); // LTCD_B5
-    gpiok.pk5.into_alternate_af14().set_speed(Speed::VeryHigh); // LTCD_B6
-    gpiok.pk6.into_alternate_af14().set_speed(Speed::VeryHigh); // LTCD_D7
-    gpiok.pk7.into_alternate_af14().set_speed(Speed::VeryHigh); // LTCD_E
+    gpioe.pe4.into_alternate_af14().set_speed(Speed::VeryHigh);
+    gpiog.pg12.into_alternate_af9().set_speed(Speed::VeryHigh);
+    gpioi.pi9.into_alternate_af14().set_speed(Speed::VeryHigh);
+    gpioi.pi10.into_alternate_af14().set_speed(Speed::VeryHigh);
+    gpioi.pi13.into_alternate_af14().set_speed(Speed::VeryHigh);
+    gpioi.pi14.into_alternate_af14().set_speed(Speed::VeryHigh);
+    gpioi.pi15.into_alternate_af14().set_speed(Speed::VeryHigh);
+    gpioj.pj0.into_alternate_af14().set_speed(Speed::VeryHigh);
+    gpioj.pj1.into_alternate_af14().set_speed(Speed::VeryHigh);
+    gpioj.pj2.into_alternate_af14().set_speed(Speed::VeryHigh);
+    gpioj.pj3.into_alternate_af14().set_speed(Speed::VeryHigh);
+    gpioj.pj4.into_alternate_af14().set_speed(Speed::VeryHigh);
+    gpioj.pj5.into_alternate_af14().set_speed(Speed::VeryHigh);
+    gpioj.pj6.into_alternate_af14().set_speed(Speed::VeryHigh);
+    gpioj.pj7.into_alternate_af14().set_speed(Speed::VeryHigh);
+    gpioj.pj8.into_alternate_af14().set_speed(Speed::VeryHigh);
+    gpioj.pj9.into_alternate_af14().set_speed(Speed::VeryHigh);
+    gpioj.pj10.into_alternate_af14().set_speed(Speed::VeryHigh);
+    gpioj.pj11.into_alternate_af14().set_speed(Speed::VeryHigh);
+    gpioj.pj13.into_alternate_af14().set_speed(Speed::VeryHigh);
+    gpioj.pj14.into_alternate_af14().set_speed(Speed::VeryHigh);
+    gpioj.pj15.into_alternate_af14().set_speed(Speed::VeryHigh);
+    gpiok.pk0.into_alternate_af14().set_speed(Speed::VeryHigh);
+    gpiok.pk1.into_alternate_af14().set_speed(Speed::VeryHigh);
+    gpiok.pk2.into_alternate_af14().set_speed(Speed::VeryHigh);
+    gpiok.pk4.into_alternate_af14().set_speed(Speed::VeryHigh);
+    gpiok.pk5.into_alternate_af14().set_speed(Speed::VeryHigh);
+    gpiok.pk6.into_alternate_af14().set_speed(Speed::VeryHigh);
+    gpiok.pk7.into_alternate_af14().set_speed(Speed::VeryHigh);
 
     // LCD control signals
     let mut lcd_enable = gpioi.pi12.into_push_pull_output();
@@ -205,13 +206,15 @@ pub fn board_config_screen() -> screen::DiscoDisplay<u16> {
     display.controller.enable_layer(Layer::L1);
     display.controller.reload();
 
-    // Enable LCD! */
+    // Enable LCD */
     lcd_enable.set_high().ok();
 
     display
 }
 
-/// This module is copied from the screen example in the stm32f7xx-hal crate.
+/// Implementation of the DisplayController traits needed in order to use the embedded-graphics
+/// crate with the STM32F746G Discovery Board LCD screen. This module is copied from the screen
+/// example in the stm32f7xx-hal crate.
 pub mod screen {
     use embedded_graphics::{
         drawable::Pixel,
