@@ -147,29 +147,40 @@ fn main() -> ! {
     let mut cap_done = false;
     let mut timeout = 0;
     while !cap_done && timeout < 2000 {
-        // Wait for the interrupt to fire
+        // Poll control reg
+        let dcmi_regs = unsafe { &(*DCMI::ptr()) };
+        let dcmi_cr = dcmi_regs.cr.read().bits();
+
+        // Poll interrupt shared memory
+        let mut dcmi_int_status: u32 = 0;
+        let mut dma2_int_status: u32 = 0;
         free(|cs| {
-            let dcmi_int_status = DCMI_INT_STATUS.borrow(cs).get();
-            let dma2_int_status = DMA2_INT_STATUS.borrow(cs).get();
-            if dcmi_int_status != 0 || dma2_int_status != 0 {
-                rprintln!("DCMI Int = {:X}", dcmi_int_status);
-                rprintln!("DMA2 Int = {:X}", dma2_int_status);
+            dcmi_int_status = DCMI_INT_STATUS.borrow(cs).get();
+            dma2_int_status = DMA2_INT_STATUS.borrow(cs).get();
 
-                // Debug code, will remove later
-                let dcmi_regs = unsafe { &(*DCMI::ptr()) };
-                rprintln!("DCMI CR = {:X}", dcmi_regs.cr.read().bits());
-                rprintln!("DCMI SR = {:X}", dcmi_regs.sr.read().bits());
-
-                // Stop after we capture a single frame (for now)
-                if dcmi_int_status & 0x1 == 0x1 {
-                    rprintln!("Capture complete!");
-                    cap_done = true;
-                }
-
+            if dcmi_int_status != 0 {
                 DCMI_INT_STATUS.borrow(cs).set(0);
+            }
+
+            if dma2_int_status != 0 {
                 DMA2_INT_STATUS.borrow(cs).set(0);
             }
         });
+
+        // Debug
+        if dcmi_int_status != 0 || dma2_int_status != 0 {
+            rprintln!("Interrupt fired!");
+            rprintln!("    DCMI Int = {:X}", dcmi_int_status);
+            rprintln!("    DMA2 Int = {:X}", dma2_int_status);
+            rprintln!("    DCMI CR  = {:X}", dcmi_cr);
+        }
+
+        // Stop after we capture a single frame (for now)
+        if (dcmi_int_status & 0x1 == 0x1) || (dcmi_cr & 0x1 == 0x0) {
+            rprintln!("Capture complete!");
+            rprintln!("    DCMI CR  = {:X}", dcmi_cr);
+            cap_done = true;
+        }
 
         timeout += 1;
         delay.delay_ms(1_u16);
