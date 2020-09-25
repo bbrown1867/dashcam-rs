@@ -8,11 +8,7 @@ use stm32f7xx_hal::{
     time::MegaHertz,
 };
 
-// TODO: Will need to share this memory with OV9655 frame buffer */
-const WIDTH: u16 = 480;
-const HEIGHT: u16 = 272;
-const FB_GRAPHICS_SIZE: usize = (WIDTH as usize) * (HEIGHT as usize);
-static mut FB_LAYER1: [u16; FB_GRAPHICS_SIZE] = [0; FB_GRAPHICS_SIZE];
+use crate::FRAME_BUFFER;
 
 /// The 25 MHz external oscillator on the board (X2) is the source for HSE
 pub fn board_get_hse() -> MegaHertz {
@@ -202,7 +198,7 @@ pub fn board_config_screen() -> screen::DiscoDisplay<u16> {
     // Configure display
     display
         .controller
-        .config_layer(Layer::L1, unsafe { &mut FB_LAYER1 }, PixelFormat::RGB565);
+        .config_layer(Layer::L1, unsafe { &mut FRAME_BUFFER }, PixelFormat::RGB565);
     display.controller.enable_layer(Layer::L1);
     display.controller.reload();
 
@@ -267,6 +263,13 @@ pub mod screen {
 
             DiscoDisplay { controller }
         }
+
+        /// Convert from the PixelColor type into RGB565 format (16-bits per pixel)
+        pub fn color2rgb(color: Rgb565) -> u16 {
+            ((color.b() as u16 & 0x1F) << 0)
+                | ((color.g() as u16 & 0x3F) << 5)
+                | ((color.r() as u16 & 0x1F) << 11)
+        }
     }
 
     impl DrawTarget<Rgb565> for DiscoDisplay<u16> {
@@ -275,14 +278,12 @@ pub mod screen {
         /// Draw a `Pixel` that has a color defined
         fn draw_pixel(&mut self, pixel: Pixel<Rgb565>) -> Result<(), Self::Error> {
             let Pixel(coord, color) = pixel;
-
-            // Convert to RGB565
-            let value: u16 = (color.b() as u16 & 0x1F)
-                | ((color.g() as u16 & 0x3F) << 5)
-                | ((color.r() as u16 & 0x1F) << 11);
-
-            self.controller
-                .draw_pixel(Layer::L1, coord.x as usize, coord.y as usize, value);
+            self.controller.draw_pixel(
+                Layer::L1,
+                coord.x as usize,
+                coord.y as usize,
+                DiscoDisplay::<u16>::color2rgb(color),
+            );
             Ok(())
         }
 
@@ -302,12 +303,8 @@ pub mod screen {
                     item.primitive.bottom_right.y as usize,
                 );
 
-                let color = match item.style.fill_color {
-                    Some(c) => {
-                        (c.b() as u32 & 0x1F)
-                            | ((c.g() as u32 & 0x3F) << 5)
-                            | ((c.r() as u32 & 0x1F) << 11)
-                    }
+                let color: u32 = match item.style.fill_color {
+                    Some(c) => DiscoDisplay::<u16>::color2rgb(c).into(),
                     None => 0u32,
                 };
 
@@ -324,7 +321,10 @@ pub mod screen {
 
         /// Return the size of the screen
         fn size(&self) -> Size {
-            Size::new(480, 272)
+            Size::new(
+                DISCO_SCREEN_CONFIG.active_width.into(),
+                DISCO_SCREEN_CONFIG.active_height.into(),
+            )
         }
     }
 }
