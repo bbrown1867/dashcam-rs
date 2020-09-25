@@ -5,8 +5,9 @@
 
 pub mod board;
 pub mod ov9655;
+pub mod util;
 
-use board::stm32f746_disco::{board_config_ov9655, board_config_screen, board_get_hse};
+use board::stm32f746_disco::{board_config_ov9655, board_config_screen, board_get_hse, screen};
 use ov9655::parallel::*;
 use ov9655::sccb::{RegMap, Register, SCCB};
 
@@ -16,7 +17,7 @@ use core::panic::PanicInfo;
 use cortex_m::interrupt::{free, Mutex};
 use cortex_m_rt::entry;
 use embedded_graphics::{
-    egcircle, egrectangle, egtext,
+    egrectangle, egtext,
     fonts::Font6x8,
     pixelcolor::{Rgb565, RgbColor},
     prelude::*,
@@ -31,6 +32,12 @@ use stm32f7xx_hal::{
     prelude::*,
     rcc::{HSEClock, HSEClockMode},
 };
+
+// Use the screen size for the frame buffer for now, eventually will be QVGA size
+const WIDTH: u16 = screen::DISCO_SCREEN_CONFIG.active_width;
+const HEIGHT: u16 = screen::DISCO_SCREEN_CONFIG.active_height;
+const FRAME_SIZE: usize = (WIDTH as usize) * (HEIGHT as usize);
+static mut FRAME_BUFFER: [u16; FRAME_SIZE] = [0; FRAME_SIZE];
 
 // Shared memory between main thread and interrupts
 static DCMI_INT_STATUS: Mutex<Cell<u32>> = Mutex::new(Cell::new(0));
@@ -95,56 +102,38 @@ fn main() -> ! {
     let mut display = board_config_screen();
     let display = &mut display;
 
-    let r = egrectangle!(
+    // Debug
+    egrectangle!(
         top_left = (0, 0),
         bottom_right = (479, 271),
         style = primitive_style!(fill_color = Rgb565::new(0, 0b11110, 0b11011))
-    );
+    )
+    .draw(display)
+    .ok();
 
-    r.draw(display).ok();
+    delay.delay_ms(500_u16);
 
-    let c1 = egcircle!(
-        center = (20, 20),
-        radius = 8,
-        style = primitive_style!(fill_color = Rgb565::new(0, 63, 0))
-    );
-
-    let c2 = egcircle!(
-        center = (25, 20),
-        radius = 8,
-        style = primitive_style!(fill_color = Rgb565::new(31, 0, 0))
-    );
-
-    let t = egtext!(
+    egtext!(
         text = "Hello Rust!",
         top_left = (100, 100),
         style = text_style!(font = Font6x8, text_color = RgbColor::WHITE)
-    );
-
-    c1.draw(display).ok();
-    c2.draw(display).ok();
-    t.draw(display).ok();
-
-    for i in 0..300 {
-        let c1 = egcircle!(
-            center = (20 + i, 20),
-            radius = 8,
-            style = primitive_style!(fill_color = RgbColor::GREEN)
-        );
-        c1.draw(display).ok();
-    }
+    )
+    .draw(display)
+    .ok();
 
     // DMA transfer description: QVGA resolution (320x240) + RGB565 format (2 bytes each pixel)
     let dma_size_bytes: u32 = 320 * 240 * 2;
     let dma_size_words: u32 = dma_size_bytes / 4;
-    let mem_addr_sram: u32 = 0x2001_0000;
+    let mem_addr_sram: u32 = unsafe { &FRAME_BUFFER as *const _ as u32 };
+
+    rprintln!(
+        "Setting up DMA transfer of {} bytes to {:X}...",
+        dma_size_bytes,
+        mem_addr_sram
+    );
 
     // Setup the DCMI peripheral to interface with the OV9655
     dcmi_setup();
-
-    // Debug code, will remove later
-    memory_set(mem_addr_sram, dma_size_bytes, 0xAA);
-    memory_get(mem_addr_sram, 4);
 
     // Setup DMA2 to transfer one image worth of words into memory
     dma2_setup(mem_addr_sram, dma_size_words.try_into().unwrap());
@@ -156,7 +145,8 @@ fn main() -> ! {
     rprintln!("DCMI and DMA setup complete!");
     rprintln!("Starting image capture...");
     let mut cap_done = false;
-    while !cap_done {
+    let mut timeout = 0;
+    while !cap_done && timeout < 2000 {
         // Wait for the interrupt to fire
         free(|cs| {
             let dcmi_int_status = DCMI_INT_STATUS.borrow(cs).get();
@@ -180,35 +170,23 @@ fn main() -> ! {
                 DMA2_INT_STATUS.borrow(cs).set(0);
             }
         });
+
+        timeout += 1;
+        delay.delay_ms(1_u16);
     }
 
-    // Debug code, will remove later
-    memory_get(mem_addr_sram, 4);
-    memory_get(mem_addr_sram + (dma_size_bytes / 2), 4);
+    // Debug
+    rprintln!("Done! Timeout = {}", timeout);
+    egtext!(
+        text = "Done!",
+        top_left = (200, 200),
+        style = text_style!(font = Font6x8, text_color = RgbColor::WHITE)
+    )
+    .draw(display)
+    .ok();
 
     loop {
         delay.delay_ms(500_u16);
-    }
-}
-
-fn memory_set(addr: u32, size: u32, val: u8) {
-    for i in 0..size {
-        unsafe {
-            let curr: *mut u8 = (addr + i) as *mut u8;
-            core::ptr::write_volatile(curr, val);
-        }
-    }
-}
-
-fn memory_get(addr: u32, size: u32) {
-    rprintln!("{} bytes located at address {:X}:", size, addr);
-
-    for i in 0..size {
-        unsafe {
-            let curr: *mut u8 = (addr + i) as *mut u8;
-            let val: u8 = core::ptr::read_volatile(curr);
-            rprintln!("\t{:X}", val);
-        }
     }
 }
 

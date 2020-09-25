@@ -137,7 +137,7 @@ pub fn dma2_setup(dest_addr: u32, dma_size: u16) {
             w
                 // FIFO threshold
                 .fth()
-                .full()
+                .half()
                 // FIFO mode (not direct mode)
                 .dmdis()
                 .set_bit()
