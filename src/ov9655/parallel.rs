@@ -96,7 +96,7 @@ pub fn dma2_setup(dest_addr: u32, dma_size: u16) {
                 .set_bit()
                 // Flow controller (DMA or peripheral)
                 .pfctrl()
-                .clear_bit()
+                .set_bit()
                 // Direction
                 .dir()
                 .peripheral_to_memory()
@@ -137,7 +137,7 @@ pub fn dma2_setup(dest_addr: u32, dma_size: u16) {
             w
                 // FIFO threshold
                 .fth()
-                .half()
+                .full()
                 // FIFO mode (not direct mode)
                 .dmdis()
                 .set_bit()
