@@ -9,7 +9,7 @@ use stm32f7xx_hal::pac::{interrupt, DCMI, DMA2, RCC};
 const DMA_STREAM: usize = 1;
 const DMA_CHANNEL: u8 = 1;
 
-// DCMI data register address (TODO: Get from PAC)
+// DCMI data register address
 const DCMI_DR_ADDR: u32 = 0x5005_0000 + 0x28;
 
 /// Setup the DCMI peripheral to interface with the OV9655.
@@ -20,14 +20,10 @@ pub fn dcmi_setup() {
     // Enable peripheral clock
     rcc_regs.ahb2enr.modify(|_, w| w.dcmien().set_bit());
 
-    // Set both SYNC signals to be active high and use snapshot mode. Default fields not set:
-    //     - Hardware sync (ESS = 0)
-    //     - 8-bit data mode (EDM = 00)
-    //     - PCLK polarity falling (PCKPOL = 0)
-    //     - Capture all frames (FCRC = 0)
+    // Set up SYNC signal polarity and capture mode
     dcmi_regs
         .cr
-        .write(|w| w.vspol().set_bit().hspol().clear_bit().cm().set_bit());
+        .write(|w| w.vspol().set_bit().hspol().clear_bit().cm().clear_bit());
 
     // Enable all of the interrupts
     dcmi_regs.ier.write(|w| {
@@ -82,7 +78,7 @@ pub fn dma2_setup(dest_addr: u32, dma_size: u16) {
                 .peripheral_to_memory()
                 // Circular mode
                 .circ()
-                .clear_bit()
+                .set_bit()
                 // Peripheral address increment
                 .pinc()
                 .clear_bit()

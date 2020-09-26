@@ -5,8 +5,7 @@ pub mod sccb;
 
 use sccb::RegMap;
 
-/// Given an empty `RegMap`, fill out the register values for a particular configuration. This
-/// configuration was determined by reading the datasheet and setting fields that made sense.
+/// Given an empty `RegMap`, fill out the register values for a particular configuration.
 pub fn get_config(reg_vals: &mut RegMap) {
     // 30 fps VGA with VarioPixel and RGB output data format
     reg_vals.insert(0x12, 0x63).unwrap();
@@ -30,6 +29,7 @@ pub fn get_config(reg_vals: &mut RegMap) {
     reg_vals.insert(0x74, 0x10).unwrap();
     reg_vals.insert(0x75, 0x10).unwrap();
 
+    // These registers are copied from the STM32F7 BSP, need to dig into them more
     reg_vals.insert(0x00, 0x00).unwrap();
     reg_vals.insert(0x01, 0x80).unwrap();
     reg_vals.insert(0x02, 0x80).unwrap();
@@ -40,8 +40,6 @@ pub fn get_config(reg_vals: &mut RegMap) {
     reg_vals.insert(0x0e, 0x61).unwrap();
     reg_vals.insert(0x0f, 0x40).unwrap();
     reg_vals.insert(0x11, 0x01).unwrap();
-    // reg_vals.insert(0x12, 0x62).unwrap();
-    // reg_vals.insert(0x12, 0x63).unwrap();
     reg_vals.insert(0x13, 0xc7).unwrap();
     reg_vals.insert(0x14, 0x3a).unwrap();
     reg_vals.insert(0x16, 0x24).unwrap();
@@ -71,9 +69,6 @@ pub fn get_config(reg_vals: &mut RegMap) {
     reg_vals.insert(0x3d, 0x99).unwrap();
     reg_vals.insert(0x3e, 0x02).unwrap();
     reg_vals.insert(0x3f, 0xc1).unwrap();
-    // reg_vals.insert(0x40, 0xc0).unwrap();
-    // reg_vals.insert(0x40, 0x10).unwrap();
-    // reg_vals.insert(0x41, 0x41).unwrap();
     reg_vals.insert(0x42, 0xc0).unwrap();
     reg_vals.insert(0x43, 0x0a).unwrap();
     reg_vals.insert(0x44, 0xf0).unwrap();
@@ -115,10 +110,6 @@ pub fn get_config(reg_vals: &mut RegMap) {
     reg_vals.insert(0x6f, 0x9d).unwrap();
     reg_vals.insert(0x70, 0x21).unwrap();
     reg_vals.insert(0x71, 0x78).unwrap();
-    // reg_vals.insert(0x72, 0x11).unwrap();
-    // reg_vals.insert(0x73, 0x01).unwrap();
-    // reg_vals.insert(0x74, 0x10).unwrap();
-    // reg_vals.insert(0x75, 0x10).unwrap();
     reg_vals.insert(0x76, 0x01).unwrap();
     reg_vals.insert(0x77, 0x02).unwrap();
     reg_vals.insert(0x7A, 0x12).unwrap();
