@@ -26,20 +26,13 @@ pub fn dcmi_setup() {
     //     - 8-bit data mode (EDM = 00)
     //     - PCLK polarity falling (PCKPOL = 0)
     //     - Capture all frames (FCRC = 0)
-    dcmi_regs.cr.write(|w| {
-        w
-        .vspol()
-        .set_bit()
-        .hspol()
-        .set_bit()
-        .cm()
-        .set_bit()
-    });
+    dcmi_regs
+        .cr
+        .write(|w| w.vspol().set_bit().hspol().set_bit().cm().set_bit());
 
     // Enable all of the interrupts
     dcmi_regs.ier.write(|w| {
-        w
-            .line_ie()
+        w.line_ie()
             .set_bit()
             .vsync_ie()
             .set_bit()
