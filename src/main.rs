@@ -141,11 +141,13 @@ fn main() -> ! {
     // Start capture!
     dcmi_capture();
 
-    let mut b0: u32 = 0;
-    let mut b1: u32 = 0;
-    let mut b2: u32 = 0;
-    let mut b3: u32 = 0;
-    let mut b4: u32 = 0;
+    // Debug
+    let mut dma_err: u32 = 0;
+    let mut dcmi_b0: u32 = 0;
+    let mut dcmi_b1: u32 = 0;
+    let mut dcmi_b2: u32 = 0;
+    let mut dcmi_b3: u32 = 0;
+    let mut dcmi_b4: u32 = 0;
 
     // Capture a single image
     rprintln!("DCMI and DMA setup complete!");
@@ -173,24 +175,29 @@ fn main() -> ! {
             }
         });
 
+        // Debug
+        if dma2_int_status & 0x40 == 0x40 {
+            dma_err += 1;
+        }
+
         if dcmi_int_status & 0x1 == 0x1 {
-            b0 += 1;
+            dcmi_b0 += 1;
         }
 
         if dcmi_int_status & 0x2 == 0x2 {
-            b1 += 1;
+            dcmi_b1 += 1;
         }
 
         if dcmi_int_status & 0x4 == 0x04 {
-            b2 += 1;
+            dcmi_b2 += 1;
         }
 
         if dcmi_int_status & 0x8 == 0x08 {
-            b3 += 1;
+            dcmi_b3 += 1;
         }
 
         if dcmi_int_status & 0x10 == 0x10 {
-            b4 += 1;
+            dcmi_b4 += 1;
         }
 
         // Debug
@@ -222,11 +229,13 @@ fn main() -> ! {
     .draw(display)
     .ok();
 
-    rprintln!("Num Frame Interrupts = {}", b0);
-    rprintln!("Num Overrun Interrupts = {}", b1);
-    rprintln!("Num Error Interrupts = {}", b2);
-    rprintln!("Num VSYNC Interrupts = {}", b3);
-    rprintln!("Num Line Interrupts = {}", b4);
+    // Debug
+    rprintln!("Num DMA FIFO Errors    = {}", dma_err);
+    rprintln!("Num Frame Interrupts   = {}", dcmi_b0);
+    rprintln!("Num Overrun Interrupts = {}", dcmi_b1);
+    rprintln!("Num Error Interrupts   = {}", dcmi_b2);
+    rprintln!("Num VSYNC Interrupts   = {}", dcmi_b3);
+    rprintln!("Num Line Interrupts    = {}", dcmi_b4);
 
     loop {
         delay.delay_ms(500_u16);
