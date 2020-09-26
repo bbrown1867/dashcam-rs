@@ -143,33 +143,11 @@ const OV9655_MANF_ID: u16 = 0x7FA2;
 const OV9655_PROD_ID: u16 = 0x9657;
 
 /// Device register addresses.
-pub struct Register;
+struct Register;
 
-#[allow(dead_code)]
 impl Register {
     // Common control registers
-    pub const COM_CNTRL_01: u8 = 0x04;
-    pub const COM_CNTRL_02: u8 = 0x09;
-    pub const COM_CNTRL_03: u8 = 0x0C;
-    pub const COM_CNTRL_04: u8 = 0x0D;
-    pub const COM_CNTRL_05: u8 = 0x0E;
-    pub const COM_CNTRL_06: u8 = 0x0F;
     pub const COM_CNTRL_07: u8 = 0x12;
-    pub const COM_CNTRL_08: u8 = 0x13;
-    pub const COM_CNTRL_09: u8 = 0x14;
-    pub const COM_CNTRL_10: u8 = 0x15;
-    pub const COM_CNTRL_11: u8 = 0x3B;
-    pub const COM_CNTRL_12: u8 = 0x3C;
-    pub const COM_CNTRL_13: u8 = 0x3D;
-    pub const COM_CNTRL_14: u8 = 0x3E;
-    pub const COM_CNTRL_15: u8 = 0x40;
-    pub const COM_CNTRL_16: u8 = 0x41;
-    pub const COM_CNTRL_17: u8 = 0x42;
-    pub const COM_CNTRL_18: u8 = 0x8B;
-    pub const COM_CNTRL_19: u8 = 0x8C;
-    pub const COM_CNTRL_20: u8 = 0x8D;
-    pub const COM_CNTRL_21: u8 = 0xA4;
-    pub const COM_CNTRL_22: u8 = 0xB5;
 
     // Product ID registers
     pub const PROD_ID_MSB: u8 = 0x0A;
@@ -178,11 +156,4 @@ impl Register {
     // Manufacturer ID registers
     pub const MANF_ID_MSB: u8 = 0x1C;
     pub const MANF_ID_LSB: u8 = 0x1D;
-
-    // Rescaling configuration registers
-    pub const PIX_OUT_INDX: u8 = 0x72;
-    pub const PIX_CLK_DIVD: u8 = 0x73;
-    pub const PIX_HOR_SCAL: u8 = 0x74;
-    pub const PIX_VER_SCAL: u8 = 0x75;
-    pub const MIRROR_VFLIP: u8 = 0x1E;
 }
