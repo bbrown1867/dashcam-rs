@@ -132,14 +132,12 @@ fn main() -> ! {
         mem_addr_sram
     );
 
-    // Setup the DCMI peripheral to interface with the OV9655
+    // Setup DCMI and DMA2 to transfer one image worth of words into memory
     dcmi_setup();
-
-    // Setup DMA2 to transfer one image worth of words into memory
     dma2_setup(mem_addr_sram, dma_size_words.try_into().unwrap());
 
     // Start capture!
-    dcmi_capture();
+    start_capture();
 
     // Debug
     let mut dma_err: u32 = 0;
@@ -213,6 +211,7 @@ fn main() -> ! {
             rprintln!("Capture complete!");
             rprintln!("    DCMI CR  = {:X}", dcmi_cr);
             cap_done = true;
+            stop_capture();
         }
 
         timeout += 1;
