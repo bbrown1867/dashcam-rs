@@ -74,9 +74,9 @@ pub fn dma2_setup(dest_addr: u32, dma_size: u16) {
                 // TCIE interrupt
                 .tcie()
                 .set_bit()
-                // Flow controller (DMA or peripheral)
+                // Flow controller (0 = DMA, 1 = peripheral)
                 .pfctrl()
-                .set_bit()
+                .clear_bit()
                 // Direction
                 .dir()
                 .peripheral_to_memory()
@@ -106,26 +106,12 @@ pub fn dma2_setup(dest_addr: u32, dma_size: u16) {
                 .single()
                 // Memory burst
                 .mburst()
-                .incr4()
+                .single()
                 // Channel
                 .chsel()
                 .bits(DMA_CHANNEL)
         });
     }
-
-    // Configure FIFO
-    dma2_regs.st[DMA_STREAM].fcr.write(|w| {
-        w
-            // FIFO threshold
-            .fth()
-            .full()
-            // FIFO mode (not direct mode)
-            .dmdis()
-            .set_bit()
-            // FEIE interrupt
-            .feie()
-            .set_bit()
-    });
 
     // Configure addresses and size
     dma2_regs.st[DMA_STREAM]
