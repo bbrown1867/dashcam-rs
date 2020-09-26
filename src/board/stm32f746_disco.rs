@@ -8,6 +8,7 @@ use stm32f7xx_hal::{
     time::MegaHertz,
 };
 
+// Display frame buffer memory currently shared with camera
 use crate::FRAME_BUFFER;
 
 /// The 25 MHz external oscillator on the board (X2) is the source for HSE

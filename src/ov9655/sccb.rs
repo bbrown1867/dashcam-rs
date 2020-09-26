@@ -9,7 +9,7 @@ use core::marker::PhantomData;
 use embedded_hal::blocking::i2c;
 use heapless::{consts, LinearMap};
 
-/// Statically allocated (200 elements) linear map for mapping addresses (`u8`) to values (`u8`).
+/// Statically allocated (size 200) linear map for mapping addresses (`u8`) to values (`u8`).
 pub type RegMap = LinearMap<u8, u8, consts::U200>;
 
 /// SCCB driver.
@@ -133,13 +133,13 @@ where
     }
 }
 
-// Device address for is 0x60, however the I2C driver will left-shift the provided address by 1
+/// Device address for is 0x60, however the I2C driver will left-shift the provided address by 1
 const OV9655_ADDRESS: u8 = 0x30;
 
-// Expected manufacturer ID (weird that it is not "OV" in ASCII...)
+/// Expected manufacturer ID (weird that it is not "OV" in ASCII...)
 const OV9655_MANF_ID: u16 = 0x7FA2;
 
-// Expected product ID (weird that it is not "9655"...)
+/// Expected product ID (weird that it is not "9655"...)
 const OV9655_PROD_ID: u16 = 0x9657;
 
 /// Device register addresses.

@@ -7,7 +7,7 @@ pub mod board;
 pub mod ov9655;
 pub mod util;
 
-use board::stm32f746_disco::{board_config_ov9655, board_config_screen, board_get_hse, screen};
+use board::stm32f746_disco::*;
 use ov9655::parallel::*;
 use ov9655::sccb::{RegMap, SCCB};
 
@@ -33,6 +33,10 @@ use stm32f7xx_hal::{
     rcc::{HSEClock, HSEClockMode},
 };
 
+// QVGA size
+const QVGA_WIDTH: u32 = 320;
+const QVGA_HEIGHT: u32 = 240;
+
 // Use the screen size for the frame buffer for now, eventually will be QVGA size
 const WIDTH: u16 = screen::DISCO_SCREEN_CONFIG.active_width;
 const HEIGHT: u16 = screen::DISCO_SCREEN_CONFIG.active_height;
@@ -44,6 +48,7 @@ static DCMI_INT_STATUS: Mutex<Cell<u32>> = Mutex::new(Cell::new(0));
 static DMA2_INT_STATUS: Mutex<Cell<u32>> = Mutex::new(Cell::new(0));
 
 #[entry]
+/// Program entry point.
 fn main() -> ! {
     // Setup RTT for logging
     let channels = rtt_init! {
@@ -98,7 +103,7 @@ fn main() -> ! {
     sccb.apply_config(&mut i2c, &reg_vals, false).unwrap();
     rprintln!("QVGA mode setup for the OV9655 complete!");
 
-    // Configure the LCD screen (debug only)
+    // Configure the LCD screen (for debug purposes)
     let mut display = board_config_screen();
     let display = &mut display;
 
@@ -121,44 +126,33 @@ fn main() -> ! {
     .draw(display)
     .ok();
 
-    // DMA transfer description: QVGA resolution (320x240) + RGB565 format (2 bytes each pixel)
-    let dma_size_bytes: u32 = 320 * 240 * 2;
+    // DMA transfer description: QVGA resolution + RGB565 format (2 bytes each pixel)
+    let dma_size_bytes: u32 = QVGA_WIDTH * QVGA_HEIGHT * 2;
     let dma_size_words: u32 = dma_size_bytes / 4;
     let mem_addr_sram: u32 = unsafe { &FRAME_BUFFER as *const _ as u32 };
 
     rprintln!(
-        "Setting up DMA transfer of {} bytes to {:X}...",
+        "DMA transfer: {} bytes to address 0x{:X}",
         dma_size_bytes,
         mem_addr_sram
     );
 
-    // Setup DCMI and DMA2 to transfer one image worth of words into memory
+    // Setup DCMI and DMA2 to transfer from the DCMI peripheral into memory
     dcmi_setup();
     dma2_setup(mem_addr_sram, dma_size_words.try_into().unwrap());
 
-    /* Allow RTT buffer to flush and view screen */
+    // Allow RTT buffer to flush and give time to view screen prior to starting
+    rprintln!("Starting image capture...");
     delay.delay_ms(500_u16);
-
-    // Start capture!
     start_capture();
 
     // Debug
-    let mut dcmi_b0: u32 = 0;
-    let mut dcmi_b1: u32 = 0;
-    let mut dcmi_b2: u32 = 0;
-    let mut dcmi_b3: u32 = 0;
-    let mut dcmi_b4: u32 = 0;
+    let mut dcmi_bits: [u32; 5] = [0; 5];
+    let mut dma2_bits: [u32; 4] = [0; 4];
 
     // Capture a single image
-    rprintln!("DCMI and DMA setup complete!");
-    rprintln!("Starting image capture...");
-    let mut cap_done = false;
-    let mut timeout = 0;
-    while !cap_done && timeout < 2000 {
-        // Poll control reg
-        let dcmi_regs = unsafe { &(*DCMI::ptr()) };
-        let dcmi_cr = dcmi_regs.cr.read().bits();
-
+    let mut num_caps = 0;
+    while num_caps < 10 {
         // Poll interrupt shared memory
         let mut dcmi_int_status: u32 = 0;
         let mut dma2_int_status: u32 = 0;
@@ -175,69 +169,48 @@ fn main() -> ! {
             }
         });
 
-        // Debug
-        if dcmi_int_status & 0x1 == 0x1 {
-            dcmi_b0 += 1;
-        }
-
-        if dcmi_int_status & 0x2 == 0x2 {
-            dcmi_b1 += 1;
-        }
-
-        if dcmi_int_status & 0x4 == 0x04 {
-            dcmi_b2 += 1;
-        }
-
-        if dcmi_int_status & 0x8 == 0x08 {
-            dcmi_b3 += 1;
-        }
-
-        if dcmi_int_status & 0x10 == 0x10 {
-            dcmi_b4 += 1;
-        }
-
-        // Stop after DMA transfer complete
+        // Check if DMA transfer completed
         if dma2_int_status & 0x800 == 0x800 {
-            rprintln!("Capture complete!");
-            rprintln!("    DMA transfer complete.");
-            cap_done = true;
-        }
-
-        // Stop after we capture a single frame
-        if dcmi_int_status & 0x1 == 0x1 {
-            rprintln!("Capture complete!");
-            rprintln!("    DCMI CR  = {:X}", dcmi_cr);
-            cap_done = true;
+            num_caps += 1;
         }
 
         // Debug
-        if dcmi_int_status != 0 || dma2_int_status != 0 {
-            rprintln!("Interrupt fired!");
-            rprintln!("    DCMI Int = {:X}", dcmi_int_status);
-            rprintln!("    DMA2 Int = {:X}", dma2_int_status);
-            rprintln!("    DCMI CR  = {:X}", dcmi_cr);
+        for x in 0..5 {
+            if dcmi_int_status & (1 << x) == (1 << x) {
+                dcmi_bits[x] += 1;
+            }
         }
 
-        timeout += 1;
-        delay.delay_ms(1_u16);
+        // Debug
+        for x in 0..4 {
+            let y = 8 + x;
+            if dma2_int_status & (1 << y) == (1 << y) {
+                dma2_bits[x] += 1;
+            }
+        }
     }
 
     // Stop capture
     stop_capture();
 
     // Debug
-
-    rprintln!("Num Frame Interrupts   = {}", dcmi_b0);
-    rprintln!("Num Overrun Interrupts = {}", dcmi_b1);
-    rprintln!("Num Error Interrupts   = {}", dcmi_b2);
-    rprintln!("Num VSYNC Interrupts   = {}", dcmi_b3);
-    rprintln!("Num Line Interrupts    = {}", dcmi_b4);
+    rprintln!("Capture complete!");
+    rprintln!("    Num DMA2 Direct Error Interrupts   = {}", dma2_bits[0]);
+    rprintln!("    Num DMA2 Transfer Error Interrupts = {}", dma2_bits[1]);
+    rprintln!("    Num DMA2 Halfway Interrupts        = {}", dma2_bits[2]);
+    rprintln!("    Num DMA2 Done Interrupts           = {}", dma2_bits[3]);
+    rprintln!("    Num DCMI Frame Interrupts          = {}", dcmi_bits[0]);
+    rprintln!("    Num DCMI Overrun Interrupts        = {}", dcmi_bits[1]);
+    rprintln!("    Num DCMI Error Interrupts          = {}", dcmi_bits[2]);
+    rprintln!("    Num DCMI VSYNC Interrupts          = {}", dcmi_bits[3]);
+    rprintln!("    Num DCMI Line Interrupts           = {}", dcmi_bits[4]);
 
     // End of program
     loop {}
 }
 
 #[interrupt]
+/// DCMI interrupt handler. Determines which interrupts fired and passes to main thread.
 fn DCMI() {
     // Read and clear interrupt status
     let int_status = unsafe {
@@ -260,6 +233,7 @@ fn DCMI() {
 }
 
 #[interrupt]
+/// DMA2 Stream 1 interrupt handler. Determines which interrupts fired and passes to main thread.
 fn DMA2_STREAM1() {
     // Read and clear interrupt status
     let int_status = unsafe {
@@ -283,6 +257,7 @@ fn DMA2_STREAM1() {
 
 #[inline(never)]
 #[panic_handler]
+/// Custom handler to use RTT when a panic occurs.
 fn panic(_info: &PanicInfo) -> ! {
     rprintln!("Panicked!");
     rprintln!("{:?}", _info);
