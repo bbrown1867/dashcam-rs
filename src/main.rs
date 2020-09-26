@@ -9,7 +9,7 @@ pub mod util;
 
 use board::stm32f746_disco::{board_config_ov9655, board_config_screen, board_get_hse, screen};
 use ov9655::parallel::*;
-use ov9655::sccb::{RegMap, Register, SCCB};
+use ov9655::sccb::{RegMap, SCCB};
 
 use core::cell::Cell;
 use core::convert::TryInto;
@@ -94,8 +94,8 @@ fn main() -> ! {
 
     // Configure the OV9655 for QVGA (320x240) resolution with RGB565
     let mut reg_vals = RegMap::new();
-    qvga_setup(&mut reg_vals);
-    sccb.apply_config(&mut i2c, &reg_vals).unwrap();
+    ov9655::get_config(&mut reg_vals);
+    sccb.apply_config(&mut i2c, &reg_vals, false).unwrap();
     rprintln!("QVGA mode setup for the OV9655 complete!");
 
     // Configure the LCD screen (debug only)
@@ -141,6 +141,12 @@ fn main() -> ! {
     // Start capture!
     dcmi_capture();
 
+    let mut b0: u32 = 0;
+    let mut b1: u32 = 0;
+    let mut b2: u32 = 0;
+    let mut b3: u32 = 0;
+    let mut b4: u32 = 0;
+
     // Capture a single image
     rprintln!("DCMI and DMA setup complete!");
     rprintln!("Starting image capture...");
@@ -166,6 +172,26 @@ fn main() -> ! {
                 DMA2_INT_STATUS.borrow(cs).set(0);
             }
         });
+
+        if dcmi_int_status & 0x1 == 0x1 {
+            b0 += 1;
+        }
+
+        if dcmi_int_status & 0x2 == 0x2 {
+            b1 += 1;
+        }
+
+        if dcmi_int_status & 0x4 == 0x04 {
+            b2 += 1;
+        }
+
+        if dcmi_int_status & 0x8 == 0x08 {
+            b3 += 1;
+        }
+
+        if dcmi_int_status & 0x10 == 0x10 {
+            b4 += 1;
+        }
 
         // Debug
         if dcmi_int_status != 0 || dma2_int_status != 0 {
@@ -196,84 +222,34 @@ fn main() -> ! {
     .draw(display)
     .ok();
 
+    rprintln!("Num Frame Interrupts = {}", b0);
+    rprintln!("Num Overrun Interrupts = {}", b1);
+    rprintln!("Num Error Interrupts = {}", b2);
+    rprintln!("Num VSYNC Interrupts = {}", b3);
+    rprintln!("Num Line Interrupts = {}", b4);
+
     loop {
         delay.delay_ms(500_u16);
     }
 }
 
-fn qvga_setup(reg_vals: &mut RegMap) {
-    // 15 fps VGA with RGB output data format
-    reg_vals.insert(Register::COM_CNTRL_07, 0x03).unwrap();
-
-    // Pin configuration:
-    // --> Bit 6: Set this bit to change HREF pin to be HSYNC signals
-    // --> Bit 4: PCLK reverse - PCLK is falling edge in datasheet, so reverse is rising
-    // --> Bit 3: HREF reverse - HREF active high in datasheet, so reverse is active low
-    // --> Bit 1: VSYNC negative - VSYNC active low in datasheet, so reverse is active high
-    // --> Bit 0: HSYNC negative - HSYNC polarity unclear in datasheet, ignore and use HREF
-    reg_vals.insert(Register::COM_CNTRL_10, 0x00).unwrap();
-
-    // RGB 565 data format with full output range (0x00 --> 0xFF)
-    reg_vals.insert(Register::COM_CNTRL_15, 0x10).unwrap();
-
-    // Scale down ON
-    reg_vals.insert(Register::COM_CNTRL_16, 0x01).unwrap();
-
-    // Reduce resolution by half both vertically and horizontally (640x480 --> 320x240)
-    reg_vals.insert(Register::PIX_OUT_INDX, 0x11).unwrap();
-
-    // Pixel clock output frequency adjustment (note: default value is 0x01)
-    reg_vals.insert(Register::PIX_CLK_DIVD, 0x01).unwrap();
-
-    // Horizontal and vertical scaling - TODO: Unsure how this works
-    reg_vals.insert(Register::PIX_HOR_SCAL, 0x10).unwrap();
-    reg_vals.insert(Register::PIX_VER_SCAL, 0x10).unwrap();
-
-    // TODO: Are registers below necessary?
-
-    // Set the output drive capability to 4x
-    reg_vals.insert(Register::COM_CNTRL_01, 0x03).unwrap();
-
-    // Set the exposure step bit high
-    reg_vals.insert(Register::COM_CNTRL_05, 0x01).unwrap();
-
-    // Enable HREF at optical black, use optical black as BLC signal
-    reg_vals.insert(Register::COM_CNTRL_06, 0xc0).unwrap();
-
-    // Enable auto white balance, gain control, exposure control, etc.
-    reg_vals.insert(Register::COM_CNTRL_08, 0xef).unwrap();
-
-    // More gain and exposure settings
-    reg_vals.insert(Register::COM_CNTRL_09, 0x3a).unwrap();
-
-    // No mirror and no vertical flip
-    reg_vals.insert(Register::MIRROR_VFLIP, 0x00).unwrap();
-
-    // Zoom function ON, black/white correction off
-    reg_vals.insert(Register::COM_CNTRL_14, 0x02).unwrap();
-
-    // Enables auto adjusting for de-noise and edge enhancement
-    reg_vals.insert(Register::COM_CNTRL_17, 0xc0).unwrap();
-}
-
 #[interrupt]
 fn DCMI() {
+    // Read and clear interrupt status
+    let int_status = unsafe {
+        let dcmi_regs = &(*DCMI::ptr());
+        let int_status = dcmi_regs.ris.read().bits();
+        dcmi_regs.icr.write(|w| w.bits(int_status));
+        int_status
+    };
+
+    // Signal interrupt status to main thread
     free(|cs| {
         // If main thread is not processing a previous interrupt
         if DCMI_INT_STATUS.borrow(cs).get() == 0 {
-            // Read interrupt status
-            let dcmi_regs = unsafe { &(*DCMI::ptr()) };
-            let int_status = dcmi_regs.ris.read().bits();
-
             // If an interrupt fired
             if int_status != 0 {
-                // Signal interrupt status to main thread
                 DCMI_INT_STATUS.borrow(cs).set(int_status);
-
-                // Clear the pending interrupt
-                unsafe {
-                    dcmi_regs.icr.write(|w| w.bits(int_status));
-                }
             }
         }
     });
@@ -281,22 +257,21 @@ fn DCMI() {
 
 #[interrupt]
 fn DMA2_STREAM1() {
+    // Read and clear interrupt status
+    let int_status = unsafe {
+        let dma2_regs = &(*DMA2::ptr());
+        let int_status = dma2_regs.lisr.read().bits();
+        dma2_regs.lifcr.write(|w| w.bits(int_status));
+        int_status
+    };
+
+    // Signal interrupt status to main thread
     free(|cs| {
         // If main thread is not processing a previous interrupt
         if DMA2_INT_STATUS.borrow(cs).get() == 0 {
-            // Read interrupt status
-            let dma2_regs = unsafe { &(*DMA2::ptr()) };
-            let int_status = dma2_regs.lisr.read().bits();
-
             // If an interrupt fired
             if int_status != 0 {
-                // Signal interrupt status to main thread
                 DMA2_INT_STATUS.borrow(cs).set(int_status);
-
-                // Clear the pending interrupt
-                unsafe {
-                    dma2_regs.lifcr.write(|w| w.bits(int_status));
-                }
             }
         }
     });
