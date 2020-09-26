@@ -14,7 +14,6 @@ const DCMI_DR_ADDR: u32 = 0x5005_0000 + 0x28;
 
 /// Setup the DCMI peripheral to interface with the OV9655.
 pub fn dcmi_setup() {
-    // TODO: No HAL driver exists for DCMI
     let dcmi_regs = unsafe { &(*DCMI::ptr()) };
     let rcc_regs = unsafe { &(*RCC::ptr()) };
 
@@ -28,7 +27,7 @@ pub fn dcmi_setup() {
     //     - Capture all frames (FCRC = 0)
     dcmi_regs
         .cr
-        .write(|w| w.vspol().set_bit().hspol().set_bit().cm().set_bit());
+        .write(|w| w.vspol().set_bit().hspol().clear_bit().cm().set_bit());
 
     // Enable all of the interrupts
     dcmi_regs.ier.write(|w| {
@@ -43,27 +42,10 @@ pub fn dcmi_setup() {
             .frame_ie()
             .set_bit()
     });
-
-    // Enable DCMI interrupt
-    unsafe {
-        NVIC::unmask::<interrupt>(interrupt::DCMI);
-    }
-}
-
-/// Initiate DCMI capture.
-pub fn dcmi_capture() {
-    // TODO: No HAL driver exists for DCMI
-    let dcmi_regs = unsafe { &(*DCMI::ptr()) };
-
-    // Enable the DCMI peripheral and start capture
-    dcmi_regs
-        .cr
-        .modify(|_, w| w.enable().set_bit().capture().set_bit());
 }
 
 /// Setup DMA2 to transfer image data from DCMI to memory.
 pub fn dma2_setup(dest_addr: u32, dma_size: u16) {
-    // TODO: No HAL driver exists for DMA with DCMI
     let dma2_regs = unsafe { &(*DMA2::ptr()) };
     let rcc_regs = unsafe { &(*RCC::ptr()) };
 
@@ -129,24 +111,21 @@ pub fn dma2_setup(dest_addr: u32, dma_size: u16) {
                 .chsel()
                 .bits(DMA_CHANNEL)
         });
-
-        // Configure FIFO
-        dma2_regs.st[DMA_STREAM].fcr.write(|w| {
-            w
-                // FIFO threshold
-                .fth()
-                .full()
-                // FIFO mode (not direct mode)
-                .dmdis()
-                .set_bit()
-                // FEIE interrupt
-                .feie()
-                .set_bit()
-        });
-
-        // Enable DMA2 interrupts
-        NVIC::unmask::<interrupt>(interrupt::DMA2_STREAM1);
     }
+
+    // Configure FIFO
+    dma2_regs.st[DMA_STREAM].fcr.write(|w| {
+        w
+            // FIFO threshold
+            .fth()
+            .full()
+            // FIFO mode (not direct mode)
+            .dmdis()
+            .set_bit()
+            // FEIE interrupt
+            .feie()
+            .set_bit()
+    });
 
     // Configure addresses and size
     dma2_regs.st[DMA_STREAM]
@@ -158,7 +137,44 @@ pub fn dma2_setup(dest_addr: u32, dma_size: u16) {
     dma2_regs.st[DMA_STREAM]
         .m0ar
         .write(|w| w.m0a().bits(dest_addr));
+}
+
+/// Start DCMI capture.
+pub fn start_capture() {
+    let dma2_regs = unsafe { &(*DMA2::ptr()) };
+    let dcmi_regs = unsafe { &(*DCMI::ptr()) };
+
+    // Enable interrupts
+    unsafe {
+        NVIC::unmask::<interrupt>(interrupt::DCMI);
+        NVIC::unmask::<interrupt>(interrupt::DMA2_STREAM1);
+    }
 
     // Enable DMA2
     dma2_regs.st[DMA_STREAM].cr.modify(|_, w| w.en().set_bit());
+
+    // Enable the DCMI peripheral and start capture
+    dcmi_regs
+        .cr
+        .modify(|_, w| w.enable().set_bit().capture().set_bit());
+}
+
+/// Stop DCMI capture.
+pub fn stop_capture() {
+    let dma2_regs = unsafe { &(*DMA2::ptr()) };
+    let dcmi_regs = unsafe { &(*DCMI::ptr()) };
+
+    // Disable interrupts
+    NVIC::mask::<interrupt>(interrupt::DCMI);
+    NVIC::mask::<interrupt>(interrupt::DMA2_STREAM1);
+
+    // Disable DMA2
+    dma2_regs.st[DMA_STREAM]
+        .cr
+        .modify(|_, w| w.en().clear_bit());
+
+    // Disable the DCMI peripheral and stop capture
+    dcmi_regs
+        .cr
+        .modify(|_, w| w.enable().clear_bit().capture().clear_bit());
 }
