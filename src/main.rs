@@ -136,11 +136,13 @@ fn main() -> ! {
     dcmi_setup();
     dma2_setup(mem_addr_sram, dma_size_words.try_into().unwrap());
 
+    /* Allow RTT buffer to flush and view screen */
+    delay.delay_ms(500_u16);
+
     // Start capture!
     start_capture();
 
     // Debug
-    let mut dma_err: u32 = 0;
     let mut dcmi_b0: u32 = 0;
     let mut dcmi_b1: u32 = 0;
     let mut dcmi_b2: u32 = 0;
@@ -174,10 +176,6 @@ fn main() -> ! {
         });
 
         // Debug
-        if dma2_int_status & 0x40 == 0x40 {
-            dma_err += 1;
-        }
-
         if dcmi_int_status & 0x1 == 0x1 {
             dcmi_b0 += 1;
         }
@@ -198,6 +196,20 @@ fn main() -> ! {
             dcmi_b4 += 1;
         }
 
+        // Stop after DMA transfer complete
+        if dma2_int_status & 0x800 == 0x800 {
+            rprintln!("Capture complete!");
+            rprintln!("    DMA transfer complete.");
+            cap_done = true;
+        }
+
+        // Stop after we capture a single frame
+        if dcmi_int_status & 0x1 == 0x1 {
+            rprintln!("Capture complete!");
+            rprintln!("    DCMI CR  = {:X}", dcmi_cr);
+            cap_done = true;
+        }
+
         // Debug
         if dcmi_int_status != 0 || dma2_int_status != 0 {
             rprintln!("Interrupt fired!");
@@ -206,39 +218,23 @@ fn main() -> ! {
             rprintln!("    DCMI CR  = {:X}", dcmi_cr);
         }
 
-        // Stop after we capture a single frame (for now)
-        if (dcmi_int_status & 0x1 == 0x1) || (dcmi_cr & 0x1 == 0x0) {
-            rprintln!("Capture complete!");
-            rprintln!("    DCMI CR  = {:X}", dcmi_cr);
-            cap_done = true;
-            stop_capture();
-        }
-
         timeout += 1;
         delay.delay_ms(1_u16);
     }
 
-    // Debug
-    rprintln!("Done! Timeout = {}", timeout);
-    egtext!(
-        text = "Done!",
-        top_left = (200, 200),
-        style = text_style!(font = Font6x8, text_color = RgbColor::WHITE)
-    )
-    .draw(display)
-    .ok();
+    // Stop capture
+    stop_capture();
 
     // Debug
-    rprintln!("Num DMA FIFO Errors    = {}", dma_err);
+
     rprintln!("Num Frame Interrupts   = {}", dcmi_b0);
     rprintln!("Num Overrun Interrupts = {}", dcmi_b1);
     rprintln!("Num Error Interrupts   = {}", dcmi_b2);
     rprintln!("Num VSYNC Interrupts   = {}", dcmi_b3);
     rprintln!("Num Line Interrupts    = {}", dcmi_b4);
 
-    loop {
-        delay.delay_ms(500_u16);
-    }
+    // End of program
+    loop {}
 }
 
 #[interrupt]
