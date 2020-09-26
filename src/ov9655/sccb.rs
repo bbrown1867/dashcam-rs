@@ -110,12 +110,22 @@ where
     }
 
     /// Apply a register configuration specified by the linear map.
-    pub fn apply_config(&self, i2c: &mut I2C, map: &RegMap) -> Result<(), SccbError<E>> {
+    pub fn apply_config(
+        &self,
+        i2c: &mut I2C,
+        map: &RegMap,
+        do_readback: bool,
+    ) -> Result<(), SccbError<E>> {
         for (reg, val) in map.iter() {
+            // Write the register
             self.write_register(i2c, *reg, *val)?;
-            let readback = self.read_register(i2c, *reg)?;
-            if readback != *val {
-                return Err(SccbError::RegMismatch((*reg, readback)));
+
+            // Readback to check the write register worked
+            if do_readback {
+                let readback = self.read_register(i2c, *reg)?;
+                if readback != *val {
+                    return Err(SccbError::RegMismatch((*reg, readback)));
+                }
             }
         }
 

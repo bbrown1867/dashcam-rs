@@ -22,19 +22,24 @@ pub fn dcmi_setup() {
     rcc_regs.ahb2enr.modify(|_, w| w.dcmien().set_bit());
 
     // Set both SYNC signals to be active high and use snapshot mode. Default fields not set:
-    //     - VSYNC active low (0)
-    //     - HSYNC (HREF) active high (1)
     //     - Hardware sync (ESS = 0)
     //     - 8-bit data mode (EDM = 00)
     //     - PCLK polarity falling (PCKPOL = 0)
     //     - Capture all frames (FCRC = 0)
-    dcmi_regs
-        .cr
-        .write(|w| w.vspol().clear_bit().hspol().set_bit().cm().set_bit());
+    dcmi_regs.cr.write(|w| {
+        w
+        .vspol()
+        .set_bit()
+        .hspol()
+        .set_bit()
+        .cm()
+        .set_bit()
+    });
 
     // Enable all of the interrupts
     dcmi_regs.ier.write(|w| {
-        w.line_ie()
+        w
+            .line_ie()
             .set_bit()
             .vsync_ie()
             .set_bit()
