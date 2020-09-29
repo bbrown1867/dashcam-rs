@@ -1,6 +1,5 @@
 //! Board specific functions for the STM32F746G Discovery Board.
 
-use crate::FRAME_BUFFER;
 use stm32_fmc::devices::is42s32800g_6;
 use stm32f7xx_hal::{
     delay::Delay,
@@ -11,6 +10,12 @@ use stm32f7xx_hal::{
     rcc::Clocks,
     time::MegaHertz,
 };
+
+// SRAM buffer for display
+const DISP_WIDTH: u16 = 480;
+const DISP_HEIGHT: u16 = 272;
+const DISP_SIZE: usize = (DISP_WIDTH as usize) * (DISP_HEIGHT as usize);
+static mut DISP_BUFFER: [u16; DISP_SIZE] = [0; DISP_SIZE];
 
 /// The 25 MHz external oscillator on the board (X2) is the source for HSE
 pub fn board_get_hse() -> MegaHertz {
@@ -271,7 +276,7 @@ pub fn board_config_screen() -> screen::DiscoDisplay<u16> {
     // Configure display
     display
         .controller
-        .config_layer(Layer::L1, unsafe { &mut FRAME_BUFFER }, PixelFormat::RGB565);
+        .config_layer(Layer::L1, unsafe { &mut DISP_BUFFER }, PixelFormat::RGB565);
     display.controller.enable_layer(Layer::L1);
     display.controller.reload();
 
@@ -302,8 +307,8 @@ pub mod screen {
 
     /// STM32F7-DISCO board display
     pub const DISCO_SCREEN_CONFIG: DisplayConfig = DisplayConfig {
-        active_width: 480,
-        active_height: 272,
+        active_width: super::DISP_WIDTH,
+        active_height: super::DISP_HEIGHT,
         h_back_porch: 13,
         h_front_porch: 30,
         h_sync: 30,
