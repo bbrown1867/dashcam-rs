@@ -11,9 +11,7 @@ use board::stm32f746_disco::*;
 use ov9655::parallel::*;
 use ov9655::sccb::{RegMap, SCCB};
 
-use core::cell::Cell;
-use core::convert::TryInto;
-use core::panic::PanicInfo;
+use core::{cell::Cell, convert::TryInto, panic::PanicInfo};
 use cortex_m::interrupt::{free, Mutex};
 use cortex_m_rt::entry;
 use embedded_graphics::{
@@ -74,6 +72,33 @@ fn main() -> ! {
 
     // Delay configuration
     let mut delay = Delay::new(cm_periph.SYST, clocks);
+
+    // SDRAM configuration
+    let (ram_ptr, ram_size) = board_config_sdram(&clocks);
+    rprintln!(
+        "SDRAM configuration complete! Address = {:?}, Size = {}",
+        ram_ptr,
+        ram_size
+    );
+
+    // SDRAM testing. Two observations:
+    //  - Only lower 16-bits seem to go across the data bus
+    //  - Only can do word-aligned addresses
+    unsafe {
+        let mut ram_test: u32 = 0xAAAA_BBBB;
+
+        core::ptr::write_volatile(ram_ptr, ram_test);
+        ram_test = core::ptr::read_volatile(ram_ptr);
+        rprintln!("Read {:X} from SDRAM.", ram_test);
+
+        ram_test = 0xCCCC_DDDD;
+        util::memory_set(0xC000_0004, 1, ram_test);
+        util::memory_get(0xC000_0004, 4);
+
+        ram_test = 0xEEEE_FFFF;
+        util::memory_set(0xC000_0008, 1, ram_test);
+        util::memory_get(0xC000_0008, 4);
+    }
 
     // OV9655 GPIO configuration
     let i2c_pins = board_config_ov9655();
