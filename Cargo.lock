@@ -93,6 +93,7 @@ dependencies = [
  "embedded-hal",
  "heapless",
  "rtt-target",
+ "stm32-fmc",
  "stm32f7xx-hal",
 ]
 
@@ -240,6 +241,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a8f112729512f8e442d81f95a8a7ddf2b7c6b8a1a6f509a95864142b30cab2d3"
 
 [[package]]
+name = "stm32-fmc"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "da65cb64e4d481ab2c50c7f3ba1f2e4b3ba71ab46a864044890c9af6de352ecc"
+dependencies = [
+ "embedded-hal",
+]
+
+[[package]]
 name = "stm32f7"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -254,6 +264,7 @@ dependencies = [
 [[package]]
 name = "stm32f7xx-hal"
 version = "0.2.0"
+source = "git+https://github.com/richardeoin/stm32f7xx-hal/?branch=fmc1#ba78c44ba8319c08696a8fae3f1a5a4d2d8866f0"
 dependencies = [
  "as-slice",
  "bare-metal",
@@ -263,6 +274,7 @@ dependencies = [
  "embedded-hal",
  "micromath",
  "nb 0.1.3",
+ "stm32-fmc",
  "stm32f7",
  "void",
 ]
