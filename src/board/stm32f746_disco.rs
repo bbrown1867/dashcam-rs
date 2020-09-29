@@ -1,5 +1,6 @@
 //! Board specific functions for the STM32F746G Discovery Board.
 
+use crate::FRAME_BUFFER;
 use stm32_fmc::devices::is42s32800g_6;
 use stm32f7xx_hal::{
     delay::Delay,
@@ -11,34 +12,15 @@ use stm32f7xx_hal::{
     time::MegaHertz,
 };
 
-// Display frame buffer memory currently shared with camera
-use crate::FRAME_BUFFER;
-
 /// The 25 MHz external oscillator on the board (X2) is the source for HSE
 pub fn board_get_hse() -> MegaHertz {
     25.mhz()
 }
 
-/// Configure GPIOs for alternate functions and return the I2C pins since they are needed for
-/// I2C driver. Note that the peripherals are stolen, so this should only be done during init
-/// to be safe.
-///
-/// Pin configuration:
-///
-///     I2C1 SCL:   PB8  --> OV9655 SIOC
-///     I2C1 SDA:   PB9 <--> OV9655 SIOD
-///     (HW OSC 24M)     --> OV9655 XCLK
-///     DCMI PCLK:  PA6  <-- OV9655 PCLK
-///     DCMI HSYNC: PA4  <-- OV9655 HREF
-///     DCMI VSYNC: PG9  <-- OV9655 VSYNC
-///     DCMI D0:    PH9  <-- OV9655 D2
-///     DCMI D1:    PH10 <-- OV9655 D3
-///     DCMI D2:    PH11 <-- OV9655 D4
-///     DCMI D3:    PH12 <-- OV9655 D5
-///     DCMI D4:    PH14 <-- OV9655 D6
-///     DCMI D5:    PD3  <-- OV9655 D7
-///     DCMI D6:    PE5  <-- OV9655 D8
-///     DCMI D7:    PE6  <-- OV9655 D9
+/// Configure the STM32F746G Discovery Board pins connected to the OV9655 via the camera
+/// connector (P1).
+/// * Return the I2C pins since they are needed for the I2C driver.
+/// * Peripherals are stolen, so this should only be done during init!
 pub fn board_config_ov9655() -> (
     gpio::gpiob::PB8<Alternate<AF4>>,
     gpio::gpiob::PB9<Alternate<AF4>>,
@@ -144,7 +126,7 @@ pub fn board_config_ov9655() -> (
     (scl, sda)
 }
 
-/// Helper for SDRAM pins.
+/// Helper macro for SDRAM pins.
 macro_rules! fmc_pins {
     ($($pin:expr),*) => {
         (
@@ -158,7 +140,15 @@ macro_rules! fmc_pins {
     };
 }
 
-/// Configure STM32F746G Discovery Board SDRAM.
+/// Configure STM32F746G Discovery Board SDRAM. The FMC driver is used from the HAL, which is used
+/// in conjunction with the [stm32-rs/stm32-fmc](https://github.com/stm32-rs/stm32-fmc/) crate.
+/// * The SDRAM chip on the board is the IS42S32400F, but the driver does not support this at
+///   the time of writing. Instead, the IS42S32800G is used since that is supported. They seem
+///   to be mostly the same but the one on this board has half the size (128 MB vs. 256 MB).
+/// * This board only has 16/32 data lines wired to the SDRAM part, so only half the available
+///   128 MB is available.
+/// * The function returns a raw pointer to the SDRAM address space and size in bytes.
+/// * Peripherals are stolen, so this should only be done during init!
 pub fn board_config_sdram(clocks: &Clocks) -> (*mut u32, usize) {
     let pac_periph = unsafe { pac::Peripherals::steal() };
     let cm_periph = unsafe { cortex_m::Peripherals::steal() };
@@ -222,9 +212,10 @@ pub fn board_config_sdram(clocks: &Clocks) -> (*mut u32, usize) {
     (ram_ptr, ram_size)
 }
 
-/// Configure the STM32F746G Discovery Board LCD screen (for debug purposes). Note that the
-/// peripherals are stolen, so this should only be done during init to be safe. This code is
-/// adapted from the screen example in the stm32f7xx-hal crate.
+/// Configure the STM32F746G Discovery Board LCD screen.
+/// * This is for debug purposes only at the moment, final dashcam would not have a screen.
+/// * This code is adapted from the screen example in the `stm32f7xx-hal` crate.
+/// * Peripherals are stolen, so this should only be done during init!
 pub fn board_config_screen() -> screen::DiscoDisplay<u16> {
     let pac_periph = unsafe { pac::Peripherals::steal() };
     let gpioe = pac_periph.GPIOE.split();
