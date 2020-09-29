@@ -32,14 +32,8 @@ use stm32f7xx_hal::{
 };
 
 // QVGA size
-const QVGA_WIDTH: u32 = 320;
-const QVGA_HEIGHT: u32 = 240;
-
-// Use the screen size for the frame buffer for now, eventually will be QVGA size
-const WIDTH: u16 = screen::DISCO_SCREEN_CONFIG.active_width;
-const HEIGHT: u16 = screen::DISCO_SCREEN_CONFIG.active_height;
-const FRAME_SIZE: usize = (WIDTH as usize) * (HEIGHT as usize);
-static mut FRAME_BUFFER: [u16; FRAME_SIZE] = [0; FRAME_SIZE];
+pub const QVGA_WIDTH: u32 = 320;
+pub const QVGA_HEIGHT: u32 = 240;
 
 // Shared memory between main thread and interrupts
 static DCMI_INT_STATUS: Mutex<Cell<u32>> = Mutex::new(Cell::new(0));
@@ -74,31 +68,12 @@ fn main() -> ! {
     let mut delay = Delay::new(cm_periph.SYST, clocks);
 
     // SDRAM configuration
-    let (ram_ptr, ram_size) = board_config_sdram(&clocks);
+    let (sdram_ptr, sdram_size) = board_config_sdram(&clocks);
     rprintln!(
         "SDRAM configuration complete! Address = {:?}, Size = {}",
-        ram_ptr,
-        ram_size
+        sdram_ptr,
+        sdram_size
     );
-
-    // SDRAM testing. Two observations:
-    //  - Only lower 16-bits seem to go across the data bus
-    //  - Only can do word-aligned addresses
-    unsafe {
-        let mut ram_test: u32 = 0xAAAA_BBBB;
-
-        core::ptr::write_volatile(ram_ptr, ram_test);
-        ram_test = core::ptr::read_volatile(ram_ptr);
-        rprintln!("Read {:X} from SDRAM.", ram_test);
-
-        ram_test = 0xCCCC_DDDD;
-        util::memory_set(0xC000_0004, 1, ram_test);
-        util::memory_get(0xC000_0004, 4);
-
-        ram_test = 0xEEEE_FFFF;
-        util::memory_set(0xC000_0008, 1, ram_test);
-        util::memory_get(0xC000_0008, 4);
-    }
 
     // OV9655 GPIO configuration
     let i2c_pins = board_config_ov9655();
@@ -136,7 +111,7 @@ fn main() -> ! {
     egrectangle!(
         top_left = (0, 0),
         bottom_right = (479, 271),
-        style = primitive_style!(fill_color = Rgb565::new(0, 0b11110, 0b11011))
+        style = primitive_style!(fill_color = Rgb565::BLUE)
     )
     .draw(display)
     .ok();
@@ -154,17 +129,17 @@ fn main() -> ! {
     // DMA transfer description: QVGA resolution + RGB565 format (2 bytes each pixel)
     let dma_size_bytes: u32 = QVGA_WIDTH * QVGA_HEIGHT * 2;
     let dma_size_words: u32 = dma_size_bytes / 4;
-    let mem_addr_sram: u32 = unsafe { &FRAME_BUFFER as *const _ as u32 };
+    let frame_buffer: u32 = sdram_ptr as u32;
 
     rprintln!(
         "DMA transfer: {} bytes to address 0x{:X}",
         dma_size_bytes,
-        mem_addr_sram
+        frame_buffer
     );
 
     // Setup DCMI and DMA2 to transfer from the DCMI peripheral into memory
     dcmi_setup();
-    dma2_setup(mem_addr_sram, dma_size_words.try_into().unwrap());
+    dma2_setup(frame_buffer, dma_size_words.try_into().unwrap());
 
     // Allow RTT buffer to flush and give time to view screen prior to starting
     rprintln!("Starting image capture...");
@@ -177,7 +152,7 @@ fn main() -> ! {
 
     // Capture a single image
     let mut num_caps = 0;
-    while num_caps < 10 {
+    while num_caps < 1 {
         // Poll interrupt shared memory
         let mut dcmi_int_status: u32 = 0;
         let mut dma2_int_status: u32 = 0;
@@ -229,6 +204,27 @@ fn main() -> ! {
     rprintln!("    Num DCMI Error Interrupts          = {}", dcmi_bits[2]);
     rprintln!("    Num DCMI VSYNC Interrupts          = {}", dcmi_bits[3]);
     rprintln!("    Num DCMI Line Interrupts           = {}", dcmi_bits[4]);
+
+    // Draw image on display
+    for row in 0..QVGA_HEIGHT {
+        for col in 0..QVGA_WIDTH {
+            // Read from SDRAM
+            let offset = 4 * (row * QVGA_WIDTH + col);
+            let address = (frame_buffer + offset) as *mut u32;
+            let color = unsafe { core::ptr::read_volatile(address) };
+            let color_rgb565: u16 = color.try_into().unwrap();
+
+            // Has to be an easier way to construct an RGB565 object from a u16
+            let red: u8 = ((color_rgb565 & 0xF800) >> 11) as u8;
+            let green: u8 = ((color_rgb565 & 0x07E0) >> 5) as u8;
+            let blue: u8 = (color_rgb565 & 0x001F) as u8;
+            let color = Rgb565::new(red, green, blue);
+
+            Pixel(Point::new(col as i32, row as i32), color)
+                .draw(display)
+                .ok();
+        }
+    }
 
     // End of program
     loop {}
