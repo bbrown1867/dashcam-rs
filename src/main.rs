@@ -17,7 +17,7 @@ use cortex_m_rt::entry;
 use embedded_graphics::{
     egrectangle, egtext,
     fonts::Font6x8,
-    pixelcolor::{Rgb565, RgbColor},
+    pixelcolor::{raw::RawU16, Rgb565, RgbColor},
     prelude::*,
     primitive_style, text_style,
 };
@@ -74,6 +74,31 @@ fn main() -> ! {
         sdram_ptr,
         sdram_size
     );
+
+    unsafe {
+        let sdram_addr = sdram_ptr as u32;
+        let sdram_size = sdram_size as u32;
+        let mid_addr = (sdram_addr + (sdram_size / 2) - 4) as *mut u32;
+        let last_addr = (sdram_addr + sdram_size - 4) as *mut u32;
+
+        core::ptr::write_volatile(sdram_ptr, 0x600D_BEEF);
+        rprintln!(
+            "\tSDRAM Read Start = {:X}",
+            core::ptr::read_volatile(sdram_ptr)
+        );
+
+        core::ptr::write_volatile(mid_addr, 0x1234_5678);
+        rprintln!(
+            "\tSDRAM Read Mid = {:X}",
+            core::ptr::read_volatile(mid_addr)
+        );
+
+        core::ptr::write_volatile(last_addr, 0xDEAD_DEAD);
+        rprintln!(
+            "\tSDRAM Read End = {:X}",
+            core::ptr::read_volatile(last_addr)
+        );
+    }
 
     // OV9655 GPIO configuration
     let i2c_pins = board_config_ov9655();
@@ -206,23 +231,27 @@ fn main() -> ! {
     rprintln!("    Num DCMI Line Interrupts           = {}", dcmi_bits[4]);
 
     // Draw image on display
+    let mut offset: u32 = 0;
     for row in 0..QVGA_HEIGHT {
-        for col in 0..QVGA_WIDTH {
+        for col in (0..QVGA_WIDTH).step_by(2) {
             // Read from SDRAM
-            let offset = 4 * (row * QVGA_WIDTH + col);
             let address = (frame_buffer + offset) as *mut u32;
-            let color = unsafe { core::ptr::read_volatile(address) };
-            let color_rgb565: u16 = color.try_into().unwrap();
+            let color: u32 = unsafe { core::ptr::read_volatile(address) };
+            let p1: u16 = (color & 0xFFFF).try_into().unwrap();
+            let p2: u16 = ((color & 0xFFFF0000) >> 16).try_into().unwrap();
 
-            // Has to be an easier way to construct an RGB565 object from a u16
-            let red: u8 = ((color_rgb565 & 0xF800) >> 11) as u8;
-            let green: u8 = ((color_rgb565 & 0x07E0) >> 5) as u8;
-            let blue: u8 = (color_rgb565 & 0x001F) as u8;
-            let color = Rgb565::new(red, green, blue);
+            let color1 = Rgb565::from(RawU16::new(p1));
+            let color2 = Rgb565::from(RawU16::new(p2));
 
-            Pixel(Point::new(col as i32, row as i32), color)
+            Pixel(Point::new(col as i32, row as i32), color1)
                 .draw(display)
                 .ok();
+
+            Pixel(Point::new((col + 1) as i32, row as i32), color2)
+                .draw(display)
+                .ok();
+
+            offset += 4;
         }
     }
 

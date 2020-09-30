@@ -1,6 +1,6 @@
 //! Board specific functions for the STM32F746G Discovery Board.
 
-use stm32_fmc::devices::is42s32800g_6;
+use stm32_fmc::devices::is42s32400f_6;
 use stm32f7xx_hal::{
     delay::Delay,
     gpio::{self, Alternate, Speed, AF4},
@@ -149,9 +149,9 @@ macro_rules! fmc_pins {
 /// in conjunction with the [stm32-rs/stm32-fmc](https://github.com/stm32-rs/stm32-fmc/) crate.
 /// * The SDRAM chip on the board is the IS42S32400F, but the driver does not support this at
 ///   the time of writing. Instead, the IS42S32800G is used since that is supported. They seem
-///   to be mostly the same but the one on this board has half the size (128 MB vs. 256 MB).
+///   to be mostly the same but the one on this board has half the size (128 Mb vs. 256 Mb).
 /// * This board only has 16/32 data lines wired to the SDRAM part, so only half the available
-///   128 MB is available.
+///   128 Mb (16 MB) is available.
 /// * The function returns a raw pointer to the SDRAM address space and size in bytes.
 /// * Peripherals are stolen, so this should only be done during init!
 pub fn board_config_sdram(clocks: &Clocks) -> (*mut u32, usize) {
@@ -208,12 +208,12 @@ pub fn board_config_sdram(clocks: &Clocks) -> (*mut u32, usize) {
     // Create SDRAM object using IS42S32800g implementation
     let mut sdram = pac_periph
         .FMC
-        .sdram(fmc_io, is42s32800g_6::Is42s32800g {}, clocks);
+        .sdram(fmc_io, is42s32400f_6::Is42s32400f {}, clocks);
 
     // Initialize and return raw pointer and size in bytes
     let mut delay = Delay::new(cm_periph.SYST, *clocks);
     let ram_ptr: *mut u32 = sdram.init(&mut delay);
-    let ram_size: usize = 0x400_0000;
+    let ram_size: usize = (16 * 1024 * 1024) / 2;
     (ram_ptr, ram_size)
 }
 
