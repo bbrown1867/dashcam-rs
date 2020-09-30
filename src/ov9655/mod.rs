@@ -10,8 +10,8 @@ pub fn get_config(reg_vals: &mut RegMap) {
     // 30 fps VGA with VarioPixel and RGB output data format
     reg_vals.insert(0x12, 0x63).unwrap();
 
-    // Change HREF to HSYNC (b6), active high SYNC signals (b1, b0), falling edge PCLK (b4)
-    reg_vals.insert(0x15, 0x40).unwrap();
+    // Don't change HREF to HSYNC (b6), don't reverse SYNC polarity (b1, b0), falling PCLK (b4)
+    reg_vals.insert(0x15, 0x00).unwrap();
 
     // RGB 565 data format with full output range (0x00 --> 0xFF)
     reg_vals.insert(0x40, 0x10).unwrap();
