@@ -286,6 +286,46 @@ pub fn board_config_screen() -> screen::DiscoDisplay<u16> {
     display
 }
 
+pub fn board_draw_image(address: u32, pix_per_line: u16, num_lines: u16) {
+    assert!(pix_per_line < DISP_WIDTH && num_lines < DISP_HEIGHT);
+
+    unsafe {
+        let dma2d_regs = &(*pac::DMA2D::ptr());
+
+        // Test if a transfer is currently in progress
+        let is_started = dma2d_regs.cr.read().start().is_start();
+        if !is_started {
+            // DMA2D_FGMAR = Address of source image
+            dma2d_regs.fgmar.write(|w| w.ma().bits(address));
+
+            // DMA2_OMAR = Address of display buffer
+            dma2d_regs
+                .omar
+                .write(|w| w.ma().bits(&DISP_BUFFER as *const _ as u32));
+
+            // DMA2D_NLR = Number of lines in source image and pixels per line in source image
+            dma2d_regs
+                .nlr
+                .write(|w| w.pl().bits(pix_per_line).nl().bits(num_lines));
+
+            // DMA2D_FGOR = Line size for the source image (pixels per line)
+            dma2d_regs.fgor.write(|w| w.lo().bits(pix_per_line));
+
+            // DMA2D_OOR = Line size for the display
+            dma2d_regs.oor.write(|w| w.lo().bits(DISP_WIDTH));
+
+            // DMA2D_FGPFCCR = RGB565
+            dma2d_regs.fgpfccr.write_with_zero(|w| w.cm().rgb565());
+
+            // DMA2D_OPFCCR = RGB565
+            dma2d_regs.opfccr.write(|w| w.cm().rgb565());
+
+            // DMA2D_CR = Start transfer!
+            dma2d_regs.cr.write_with_zero(|w| w.start().set_bit());
+        }
+    }
+}
+
 /// Implementation of the DisplayController traits needed in order to use the embedded-graphics
 /// crate with the STM32F746G Discovery Board LCD screen. This module is copied from the screen
 /// example in the stm32f7xx-hal crate.
@@ -293,7 +333,10 @@ pub mod screen {
     use embedded_graphics::{
         drawable::Pixel,
         geometry::Size,
-        pixelcolor::{Rgb565, RgbColor},
+        pixelcolor::{
+            raw::{RawData, RawU16},
+            Rgb565,
+        },
         primitives,
         style::{PrimitiveStyle, Styled},
         DrawTarget,
@@ -341,13 +384,6 @@ pub mod screen {
 
             DiscoDisplay { controller }
         }
-
-        /// Convert from the PixelColor type into RGB565 format (16-bits per pixel)
-        pub fn color2rgb(color: Rgb565) -> u16 {
-            ((color.b() as u16 & 0x1F) << 0)
-                | ((color.g() as u16 & 0x3F) << 5)
-                | ((color.r() as u16 & 0x1F) << 11)
-        }
     }
 
     impl DrawTarget<Rgb565> for DiscoDisplay<u16> {
@@ -360,7 +396,7 @@ pub mod screen {
                 Layer::L1,
                 coord.x as usize,
                 coord.y as usize,
-                DiscoDisplay::<u16>::color2rgb(color),
+                RawU16::from(color).into_inner(),
             );
             Ok(())
         }
@@ -382,7 +418,7 @@ pub mod screen {
                 );
 
                 let color: u32 = match item.style.fill_color {
-                    Some(c) => DiscoDisplay::<u16>::color2rgb(c).into(),
+                    Some(c) => RawU16::from(c).into_inner() as u32,
                     None => 0u32,
                 };
 

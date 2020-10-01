@@ -31,9 +31,10 @@ use stm32f7xx_hal::{
     rcc::{HSEClock, HSEClockMode},
 };
 
-// QVGA size
-pub const QVGA_WIDTH: u32 = 320;
-pub const QVGA_HEIGHT: u32 = 240;
+// QVGA size + RGB565 format (2 bytes per pixel)
+pub const QVGA_WIDTH: u16 = 320;
+pub const QVGA_HEIGHT: u16 = 240;
+pub const QVGA_SIZE: u32 = (QVGA_WIDTH as u32) * (QVGA_HEIGHT as u32) * 2;
 
 // Shared memory between main thread and interrupts
 static DCMI_INT_STATUS: Mutex<Cell<u32>> = Mutex::new(Cell::new(0));
@@ -74,31 +75,6 @@ fn main() -> ! {
         sdram_ptr,
         sdram_size
     );
-
-    unsafe {
-        let sdram_addr = sdram_ptr as u32;
-        let sdram_size = sdram_size as u32;
-        let mid_addr = (sdram_addr + (sdram_size / 2) - 4) as *mut u32;
-        let last_addr = (sdram_addr + sdram_size - 4) as *mut u32;
-
-        core::ptr::write_volatile(sdram_ptr, 0x600D_BEEF);
-        rprintln!(
-            "\tSDRAM Read Start = {:X}",
-            core::ptr::read_volatile(sdram_ptr)
-        );
-
-        core::ptr::write_volatile(mid_addr, 0x1234_5678);
-        rprintln!(
-            "\tSDRAM Read Mid = {:X}",
-            core::ptr::read_volatile(mid_addr)
-        );
-
-        core::ptr::write_volatile(last_addr, 0xDEAD_DEAD);
-        rprintln!(
-            "\tSDRAM Read End = {:X}",
-            core::ptr::read_volatile(last_addr)
-        );
-    }
 
     // OV9655 GPIO configuration
     let i2c_pins = board_config_ov9655();
@@ -151,20 +127,25 @@ fn main() -> ! {
     .draw(display)
     .ok();
 
-    // DMA transfer description: QVGA resolution + RGB565 format (2 bytes each pixel)
-    let dma_size_bytes: u32 = QVGA_WIDTH * QVGA_HEIGHT * 2;
-    let dma_size_words: u32 = dma_size_bytes / 4;
-    let frame_buffer: u32 = sdram_ptr as u32;
+    // DMA transfer description
+    let dma_size_words: u32 = QVGA_SIZE / 4;
+    let frame_buffer1: u32 = sdram_ptr as u32;
+    let frame_buffer2: u32 = frame_buffer1 + QVGA_SIZE;
 
     rprintln!(
-        "DMA transfer: {} bytes to address 0x{:X}",
-        dma_size_bytes,
-        frame_buffer
+        "DMA transfer: {} bytes to address 0x{:X} and 0x{:X}",
+        QVGA_SIZE,
+        frame_buffer1,
+        frame_buffer2
     );
 
     // Setup DCMI and DMA2 to transfer from the DCMI peripheral into memory
     dcmi_setup();
-    dma2_setup(frame_buffer, dma_size_words.try_into().unwrap());
+    dma2_setup(
+        frame_buffer1,
+        frame_buffer2,
+        dma_size_words.try_into().unwrap(),
+    );
 
     // Allow RTT buffer to flush and give time to view screen prior to starting
     rprintln!("Starting image capture...");
@@ -177,7 +158,7 @@ fn main() -> ! {
 
     // Capture a single image
     let mut num_caps = 0;
-    while num_caps < 1 {
+    while num_caps < 10 {
         // Poll interrupt shared memory
         let mut dcmi_int_status: u32 = 0;
         let mut dma2_int_status: u32 = 0;
@@ -196,6 +177,16 @@ fn main() -> ! {
 
         // Check if DMA transfer completed
         if dma2_int_status & 0x800 == 0x800 {
+            // Determine which frame buffer in the ping-pong DMA
+            let frame_addr = match num_caps % 2 {
+                0 => frame_buffer1,
+                _ => frame_buffer2,
+            };
+
+            rprintln!("Capture complete into frame buffer = {:X}", frame_addr);
+
+            // TODO: Draw image using DMA2D
+
             num_caps += 1;
         }
 
@@ -230,12 +221,21 @@ fn main() -> ! {
     rprintln!("    Num DCMI VSYNC Interrupts          = {}", dcmi_bits[3]);
     rprintln!("    Num DCMI Line Interrupts           = {}", dcmi_bits[4]);
 
-    // Draw image on display
+    draw_frame_sdram(display, frame_buffer2);
+    // board_draw_image(frame_buffer2, QVGA_WIDTH, QVGA_HEIGHT);
+
+    // End of program
+    loop {}
+}
+
+#[allow(dead_code)]
+/// Draw a frame in SDRAM on the display. Very slow, should use DMA from memory to memory instead.
+fn draw_frame_sdram(display: &mut screen::DiscoDisplay<u16>, start_addr: u32) {
     let mut offset: u32 = 0;
     for row in 0..QVGA_HEIGHT {
         for col in (0..QVGA_WIDTH).step_by(2) {
             // Read from SDRAM
-            let address = (frame_buffer + offset) as *mut u32;
+            let address = (start_addr + offset) as *mut u32;
             let color: u32 = unsafe { core::ptr::read_volatile(address) };
             let p1: u16 = (color & 0xFFFF).try_into().unwrap();
             let p2: u16 = ((color & 0xFFFF0000) >> 16).try_into().unwrap();
@@ -254,9 +254,6 @@ fn main() -> ! {
             offset += 4;
         }
     }
-
-    // End of program
-    loop {}
 }
 
 #[interrupt]
