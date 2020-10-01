@@ -158,7 +158,7 @@ fn main() -> ! {
 
     // Capture a single image
     let mut num_caps = 0;
-    while num_caps < 10 {
+    while num_caps < 1000 {
         // Poll interrupt shared memory
         let mut dcmi_int_status: u32 = 0;
         let mut dma2_int_status: u32 = 0;
@@ -178,14 +178,18 @@ fn main() -> ! {
         // Check if DMA transfer completed
         if dma2_int_status & 0x800 == 0x800 {
             // Determine which frame buffer in the ping-pong DMA
-            let frame_addr = match num_caps % 2 {
+            let frame_buffer = match num_caps % 2 {
                 0 => frame_buffer1,
                 _ => frame_buffer2,
             };
 
-            rprintln!("Capture complete into frame buffer = {:X}", frame_addr);
+            rprintln!("Capture complete into frame buffer = {:X}", frame_buffer);
 
-            // TODO: Draw image using DMA2D
+            // Draw image on display using DMA2D
+            match board_draw_image(frame_buffer, QVGA_WIDTH, QVGA_HEIGHT) {
+                true => rprintln!("\tCannot display image. Frame rate faster than DMA2D!"),
+                false => (),
+            };
 
             num_caps += 1;
         }
@@ -220,9 +224,6 @@ fn main() -> ! {
     rprintln!("    Num DCMI Error Interrupts          = {}", dcmi_bits[2]);
     rprintln!("    Num DCMI VSYNC Interrupts          = {}", dcmi_bits[3]);
     rprintln!("    Num DCMI Line Interrupts           = {}", dcmi_bits[4]);
-
-    draw_frame_sdram(display, frame_buffer2);
-    // board_draw_image(frame_buffer2, QVGA_WIDTH, QVGA_HEIGHT);
 
     // End of program
     loop {}
