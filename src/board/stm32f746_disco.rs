@@ -286,7 +286,9 @@ pub fn board_config_screen() -> screen::DiscoDisplay<u16> {
     display
 }
 
-pub fn board_draw_image(address: u32, pix_per_line: u16, num_lines: u16) {
+/// Draw an image located at `address` on the display using DMA2D. Returns `false` on success and
+/// `true` when a DMA2D transfer was already in progress.
+pub fn board_draw_image(address: u32, pix_per_line: u16, num_lines: u16) -> bool {
     assert!(pix_per_line < DISP_WIDTH && num_lines < DISP_HEIGHT);
 
     unsafe {
@@ -309,10 +311,12 @@ pub fn board_draw_image(address: u32, pix_per_line: u16, num_lines: u16) {
                 .write(|w| w.pl().bits(pix_per_line).nl().bits(num_lines));
 
             // DMA2D_FGOR = Line size for the source image (pixels per line)
-            dma2d_regs.fgor.write(|w| w.lo().bits(pix_per_line));
+            dma2d_regs.fgor.write(|w| w.lo().bits(0));
 
             // DMA2D_OOR = Line size for the display
-            dma2d_regs.oor.write(|w| w.lo().bits(DISP_WIDTH));
+            dma2d_regs
+                .oor
+                .write(|w| w.lo().bits(DISP_WIDTH - pix_per_line));
 
             // DMA2D_FGPFCCR = RGB565
             dma2d_regs.fgpfccr.write_with_zero(|w| w.cm().rgb565());
@@ -323,6 +327,8 @@ pub fn board_draw_image(address: u32, pix_per_line: u16, num_lines: u16) {
             // DMA2D_CR = Start transfer!
             dma2d_regs.cr.write_with_zero(|w| w.start().set_bit());
         }
+
+        is_started
     }
 }
 
