@@ -41,7 +41,7 @@ pub fn dcmi_setup() {
 }
 
 /// Setup DMA2 to transfer image data from DCMI to memory.
-pub fn dma2_setup(dest_addr: u32, dma_size: u16) {
+pub fn dma2_setup(dest_addr1: u32, dest_addr2: u32, dma_size: u16) {
     let dma2_regs = unsafe { &(*DMA2::ptr()) };
     let rcc_regs = unsafe { &(*RCC::ptr()) };
 
@@ -96,7 +96,7 @@ pub fn dma2_setup(dest_addr: u32, dma_size: u16) {
                 .high()
                 // Double buffer mode
                 .dbm()
-                .clear_bit()
+                .set_bit()
                 // Peripheral burst
                 .pburst()
                 .single()
@@ -118,7 +118,10 @@ pub fn dma2_setup(dest_addr: u32, dma_size: u16) {
         .write(|w| w.pa().bits(DCMI_DR_ADDR));
     dma2_regs.st[DMA_STREAM]
         .m0ar
-        .write(|w| w.m0a().bits(dest_addr));
+        .write(|w| w.m0a().bits(dest_addr1));
+    dma2_regs.st[DMA_STREAM]
+        .m1ar
+        .write(|w| w.m1a().bits(dest_addr2));
 }
 
 /// Start DCMI capture.
