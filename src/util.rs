@@ -1,5 +1,6 @@
 //! Miscellaneous helper functions.
 
+use core::panic::PanicInfo;
 use rtt_target::rprintln;
 
 pub fn memory_set<T: Copy>(addr: u32, size: usize, val: T) {
@@ -21,4 +22,13 @@ pub fn memory_get(addr: u32, size: usize) {
             rprintln!("\t{:X}", val);
         }
     }
+}
+
+#[inline(never)]
+#[panic_handler]
+/// Custom handler to use RTT when a panic occurs.
+fn panic(_info: &PanicInfo) -> ! {
+    rprintln!("Panicked!");
+    rprintln!("{:?}", _info);
+    loop {}
 }

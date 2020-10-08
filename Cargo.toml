@@ -11,6 +11,7 @@ cortex-m-rt = "0.6.10"
 
 # Runtime support
 heapless = "0.5.5"
+cortex-m-rtic = "0.5.5"
 embedded-graphics = "0.6.1"
 rtt-target = { version = "0.2.2", features = ["cortex-m"] }
 
