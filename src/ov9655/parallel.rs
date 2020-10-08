@@ -2,8 +2,7 @@
 //! to transfer image sensor data into memory. Assumes that GPIO and RCC are setup prior to using
 //! this module.
 
-use cortex_m::peripheral::NVIC;
-use stm32f7xx_hal::pac::{interrupt, DCMI, DMA2, RCC};
+use stm32f7xx_hal::pac::{DCMI, DMA2, RCC};
 
 // DMA2-Stream 1-Channel 1 is used to interface with DCMI
 const DMA_STREAM: usize = 1;
@@ -129,12 +128,6 @@ pub fn start_capture() {
     let dma2_regs = unsafe { &(*DMA2::ptr()) };
     let dcmi_regs = unsafe { &(*DCMI::ptr()) };
 
-    // Enable interrupts
-    unsafe {
-        NVIC::unmask::<interrupt>(interrupt::DCMI);
-        NVIC::unmask::<interrupt>(interrupt::DMA2_STREAM1);
-    }
-
     // Enable DMA2
     dma2_regs.st[DMA_STREAM].cr.modify(|_, w| w.en().set_bit());
 
@@ -148,10 +141,6 @@ pub fn start_capture() {
 pub fn stop_capture() {
     let dma2_regs = unsafe { &(*DMA2::ptr()) };
     let dcmi_regs = unsafe { &(*DCMI::ptr()) };
-
-    // Disable interrupts
-    NVIC::mask::<interrupt>(interrupt::DCMI);
-    NVIC::mask::<interrupt>(interrupt::DMA2_STREAM1);
 
     // Disable DMA2
     dma2_regs.st[DMA_STREAM]
