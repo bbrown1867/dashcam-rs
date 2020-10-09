@@ -3,6 +3,8 @@
 use core::panic::PanicInfo;
 use rtt_target::rprintln;
 
+/// Sets `size` bytes located at `addr` to `val`.
+#[allow(dead_code)]
 pub fn memory_set<T: Copy>(addr: u32, size: usize, val: T) {
     for i in 0..size {
         unsafe {
@@ -12,6 +14,8 @@ pub fn memory_set<T: Copy>(addr: u32, size: usize, val: T) {
     }
 }
 
+/// Prints `size` bytes located at `addr` using RTT.
+#[allow(dead_code)]
 pub fn memory_get(addr: u32, size: usize) {
     rprintln!("{} bytes located at address {:X}:", size, addr);
 
@@ -24,9 +28,9 @@ pub fn memory_get(addr: u32, size: usize) {
     }
 }
 
+/// Custom handler to use RTT when a panic occurs.
 #[inline(never)]
 #[panic_handler]
-/// Custom handler to use RTT when a panic occurs.
 fn panic(_info: &PanicInfo) -> ! {
     rprintln!("Panicked!");
     rprintln!("{:?}", _info);
