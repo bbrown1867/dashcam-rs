@@ -1,228 +1,39 @@
-//! Board specific functions for the STM32F746G Discovery Board.
+//! Display driver for the LCD screen located on the STM32F746G Discovery Board. Majority of this
+//! code was adapted from the `screen` example in the `stm32f7xx-hal` crate, except for
+//! `draw_image` which was written from scratch. The screen is for debug purposes only at the
+//! moment, the final dashcam would not have a screen.
 
-use stm32_fmc::devices::is42s32400f_6;
+use embedded_graphics::{
+    egrectangle, egtext,
+    fonts::Font6x8,
+    pixelcolor::{Rgb565, RgbColor},
+    prelude::*,
+    primitive_style, text_style,
+};
 use stm32f7xx_hal::{
-    delay::Delay,
-    gpio::{self, Alternate, Speed, AF4},
+    gpio::Speed,
     ltdc::{Layer, PixelFormat},
     pac,
     prelude::*,
-    rcc::Clocks,
-    time::MegaHertz,
 };
 
-// SRAM buffer for display
+/// Number of horizontal pixels on the display.
 const DISP_WIDTH: u16 = 480;
+
+/// Number of vertical pixels on the display.
 const DISP_HEIGHT: u16 = 272;
+
+/// Number of total pixels on the display.
 const DISP_SIZE: usize = (DISP_WIDTH as usize) * (DISP_HEIGHT as usize);
+
+/// SRAM buffer to store display pixel data.
 static mut DISP_BUFFER: [u16; DISP_SIZE] = [0; DISP_SIZE];
 
-/// The 25 MHz external oscillator on the board (X2) is the source for HSE
-pub fn board_get_hse() -> MegaHertz {
-    25.mhz()
-}
-
-/// Configure the STM32F746G Discovery Board pins connected to the OV9655 via the camera
-/// connector (P1).
-/// * Return the I2C pins since they are needed for the I2C driver.
-/// * Peripherals are stolen, so this should only be done during init!
-pub fn board_config_ov9655() -> (
-    gpio::gpiob::PB8<Alternate<AF4>>,
-    gpio::gpiob::PB9<Alternate<AF4>>,
-) {
-    let pac_periph = unsafe { pac::Peripherals::steal() };
-    let gpioa = pac_periph.GPIOA.split();
-    let gpiob = pac_periph.GPIOB.split();
-    let gpiod = pac_periph.GPIOD.split();
-    let gpioe = pac_periph.GPIOE.split();
-    let gpiog = pac_periph.GPIOG.split();
-    let gpioh = pac_periph.GPIOH.split();
-
-    // Configure I2C1 for OV9655 SCCB
-    let scl = gpiob
-        .pb8
-        .into_alternate_af4()
-        .internal_pull_up(true)
-        .set_open_drain();
-    let sda = gpiob
-        .pb9
-        .into_alternate_af4()
-        .internal_pull_up(true)
-        .set_open_drain();
-
-    // Configure DCMI for OV9655 parallel
-    let _dcmi_pclk = gpioa
-        .pa6
-        .into_alternate_af13()
-        .internal_pull_up(true)
-        .set_open_drain()
-        .set_speed(Speed::VeryHigh);
-
-    let _dcmi_hsync = gpioa
-        .pa4
-        .into_alternate_af13()
-        .internal_pull_up(true)
-        .set_open_drain()
-        .set_speed(Speed::VeryHigh);
-
-    let _dcmi_vsync = gpiog
-        .pg9
-        .into_alternate_af13()
-        .internal_pull_up(true)
-        .set_open_drain()
-        .set_speed(Speed::VeryHigh);
-
-    let _dcmi_d0 = gpioh
-        .ph9
-        .into_alternate_af13()
-        .internal_pull_up(true)
-        .set_open_drain()
-        .set_speed(Speed::VeryHigh);
-
-    let _dcmi_d1 = gpioh
-        .ph10
-        .into_alternate_af13()
-        .internal_pull_up(true)
-        .set_open_drain()
-        .set_speed(Speed::VeryHigh);
-
-    let _dcmi_d2 = gpioh
-        .ph11
-        .into_alternate_af13()
-        .internal_pull_up(true)
-        .set_open_drain()
-        .set_speed(Speed::VeryHigh);
-
-    let _dcmi_d3 = gpioh
-        .ph12
-        .into_alternate_af13()
-        .internal_pull_up(true)
-        .set_open_drain()
-        .set_speed(Speed::VeryHigh);
-
-    let _dcmi_d4 = gpioh
-        .ph14
-        .into_alternate_af13()
-        .internal_pull_up(true)
-        .set_open_drain()
-        .set_speed(Speed::VeryHigh);
-
-    let _dcmi_d5 = gpiod
-        .pd3
-        .into_alternate_af13()
-        .internal_pull_up(true)
-        .set_open_drain()
-        .set_speed(Speed::VeryHigh);
-
-    let _dcmi_d6 = gpioe
-        .pe5
-        .into_alternate_af13()
-        .internal_pull_up(true)
-        .set_open_drain()
-        .set_speed(Speed::VeryHigh);
-
-    let _dcmi_d7 = gpioe
-        .pe6
-        .into_alternate_af13()
-        .internal_pull_up(true)
-        .set_open_drain()
-        .set_speed(Speed::VeryHigh);
-
-    (scl, sda)
-}
-
-/// Helper macro for SDRAM pins.
-macro_rules! fmc_pins {
-    ($($pin:expr),*) => {
-        (
-            $(
-                $pin.into_push_pull_output()
-                    .set_speed(Speed::VeryHigh)
-                    .into_alternate_af12()
-                    .internal_pull_up(true)
-            ),*
-        )
-    };
-}
-
-/// Configure STM32F746G Discovery Board SDRAM. The FMC driver is used from the HAL, which is used
-/// in conjunction with the [stm32-rs/stm32-fmc](https://github.com/stm32-rs/stm32-fmc/) crate.
-/// * The SDRAM chip on the board is the IS42S32400F, but the driver does not support this at
-///   the time of writing. Instead, the IS42S32800G is used since that is supported. They seem
-///   to be mostly the same but the one on this board has half the size (128 Mb vs. 256 Mb).
-/// * This board only has 16/32 data lines wired to the SDRAM part, so only half the available
-///   128 Mb (16 MB) is available.
-/// * The function returns a raw pointer to the SDRAM address space and size in bytes.
-/// * Peripherals are stolen, so this should only be done during init!
-pub fn board_config_sdram(clocks: &Clocks) -> (*mut u32, usize) {
-    let pac_periph = unsafe { pac::Peripherals::steal() };
-    let cm_periph = unsafe { cortex_m::Peripherals::steal() };
-    let gpioc = pac_periph.GPIOC.split();
-    let gpiod = pac_periph.GPIOD.split();
-    let gpioe = pac_periph.GPIOE.split();
-    let gpiof = pac_periph.GPIOF.split();
-    let gpiog = pac_periph.GPIOG.split();
-    let gpioh = pac_periph.GPIOH.split();
-
-    let fmc_io = fmc_pins! {
-        gpiof.pf0,  // A0
-        gpiof.pf1,  // A1
-        gpiof.pf2,  // A2
-        gpiof.pf3,  // A3
-        gpiof.pf4,  // A4
-        gpiof.pf5,  // A5
-        gpiof.pf12, // A6
-        gpiof.pf13, // A7
-        gpiof.pf14, // A8
-        gpiof.pf15, // A9
-        gpiog.pg0,  // A10
-        gpiog.pg1,  // A11
-        gpiog.pg4,  // BA0
-        gpiog.pg5,  // BA1
-        gpiod.pd14, // D0
-        gpiod.pd15, // D1
-        gpiod.pd0,  // D2
-        gpiod.pd1,  // D3
-        gpioe.pe7,  // D4
-        gpioe.pe8,  // D5
-        gpioe.pe9,  // D6
-        gpioe.pe10, // D7
-        gpioe.pe11, // D8
-        gpioe.pe12, // D9
-        gpioe.pe13, // D10
-        gpioe.pe14, // D11
-        gpioe.pe15, // D12
-        gpiod.pd8,  // D13
-        gpiod.pd9,  // D14
-        gpiod.pd10, // D15
-        gpioe.pe0,  // NBL0
-        gpioe.pe1,  // NBL1
-        gpioc.pc3,  // SDCKEn
-        gpiog.pg8,  // SDCLK
-        gpiog.pg15, // SDNCAS
-        gpioh.ph3,  // SDNEn
-        gpiof.pf11, // SDNRAS
-        gpioh.ph5   // SDNWE
-    };
-
-    // Create SDRAM object using IS42S32800g implementation
-    let mut sdram = pac_periph
-        .FMC
-        .sdram(fmc_io, is42s32400f_6::Is42s32400f {}, clocks);
-
-    // Initialize and return raw pointer and size in bytes
-    let mut delay = Delay::new(cm_periph.SYST, *clocks);
-    let ram_ptr: *mut u32 = sdram.init(&mut delay);
-    let ram_size: usize = (16 * 1024 * 1024) / 2;
-    (ram_ptr, ram_size)
-}
-
 /// Configure the STM32F746G Discovery Board LCD screen.
-/// * This is for debug purposes only at the moment, final dashcam would not have a screen.
-/// * This code is adapted from the screen example in the `stm32f7xx-hal` crate.
 /// * Peripherals are stolen, so this should only be done during init!
-pub fn board_config_screen() -> screen::DiscoDisplay<u16> {
+pub fn config() -> screen::DiscoDisplay<u16> {
     let pac_periph = unsafe { pac::Peripherals::steal() };
+
     let gpioe = pac_periph.GPIOE.split();
     let gpiog = pac_periph.GPIOG.split();
     let gpioi = pac_periph.GPIOI.split();
@@ -280,15 +91,34 @@ pub fn board_config_screen() -> screen::DiscoDisplay<u16> {
     display.controller.enable_layer(Layer::L1);
     display.controller.reload();
 
-    // Enable LCD */
+    // Enable LCD
     lcd_enable.set_high().ok();
 
     display
 }
 
+/// Color the screen blue and display the welcome message.
+pub fn draw_welcome(display: &mut screen::DiscoDisplay<u16>) {
+    egrectangle!(
+        top_left = (0, 0),
+        bottom_right = (479, 271),
+        style = primitive_style!(fill_color = Rgb565::BLUE)
+    )
+    .draw(display)
+    .ok();
+
+    egtext!(
+        text = "Hello Dashcam!",
+        top_left = (100, 100),
+        style = text_style!(font = Font6x8, text_color = RgbColor::WHITE)
+    )
+    .draw(display)
+    .ok();
+}
+
 /// Draw an image located at `address` on the display using DMA2D. Returns `false` on success and
 /// `true` when a DMA2D transfer was already in progress.
-pub fn board_draw_image(address: u32, pix_per_line: u16, num_lines: u16) -> bool {
+pub fn draw_image(address: u32, pix_per_line: u16, num_lines: u16) -> bool {
     assert!(pix_per_line < DISP_WIDTH && num_lines < DISP_HEIGHT);
 
     unsafe {
@@ -333,9 +163,8 @@ pub fn board_draw_image(address: u32, pix_per_line: u16, num_lines: u16) -> bool
 }
 
 /// Implementation of the DisplayController traits needed in order to use the embedded-graphics
-/// crate with the STM32F746G Discovery Board LCD screen. This module is copied from the screen
-/// example in the stm32f7xx-hal crate.
-pub mod screen {
+/// crate with the STM32F746G Discovery Board LCD screen.
+mod screen {
     use embedded_graphics::{
         drawable::Pixel,
         geometry::Size,
@@ -347,7 +176,6 @@ pub mod screen {
         style::{PrimitiveStyle, Styled},
         DrawTarget,
     };
-
     use stm32f7xx_hal::{
         ltdc::{DisplayConfig, DisplayController, Layer, PixelFormat, SupportedWord},
         pac::{DMA2D, LTDC},
@@ -383,7 +211,7 @@ pub mod screen {
                 PixelFormat::RGB565,
                 DISCO_SCREEN_CONFIG,
                 Some(&HSEClock::new(
-                    super::board_get_hse(),
+                    crate::board::get_xtal(),
                     HSEClockMode::Oscillator,
                 )),
             );

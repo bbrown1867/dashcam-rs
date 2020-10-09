@@ -1,12 +1,92 @@
 //! OV9655 device driver.
 
-pub mod parallel;
-pub mod sccb;
+mod parallel;
+mod pins;
+mod sccb;
 
-use sccb::RegMap;
+use core::convert::TryInto;
+use sccb::{RegMap, SCCB};
+use stm32f7xx_hal::{
+    delay::Delay,
+    i2c::{BlockingI2c, Mode},
+    pac::I2C1,
+    prelude::_embedded_hal_blocking_delay_DelayMs,
+    rcc::{Clocks, APB1},
+    time::U32Ext,
+};
 
-/// Given an empty `RegMap`, fill out the register values for a particular configuration.
-pub fn get_config(reg_vals: &mut RegMap) {
+/// Number of horizontal pixels for QVGA resolution.
+pub const FRAME_WIDTH: u16 = 320;
+
+/// Number of vertical pixels for QVGA resolution.
+pub const FRAME_HEIGHT: u16 = 240;
+
+/// Number of total bytes in one QVGA frame using RGB565 format (2 pixels per byte).
+pub const FRAME_SIZE: u32 = (FRAME_WIDTH as u32) * (FRAME_HEIGHT as u32) * 2;
+
+/// Initialize the OV9655 device driver.
+/// * Performs camera configuration using the SCCB (I2C) port.
+/// * Sets up DCMI and DMA2 to handle data capture.
+/// * User must call `start_capture` to begin capturing frames.
+/// * User must call `update_addrX` to setup ping-pong DMA addresses.
+pub fn init(i2c1: I2C1, apb1: &mut APB1, clocks: Clocks, delay: &mut Delay) {
+    // Pin configuration
+    let i2c_pins = pins::pin_config_stm32f746g_disco();
+
+    // I2C1 configuration (OV9655 SCCB)
+    let mut i2c = BlockingI2c::i2c1(
+        i2c1,
+        i2c_pins,
+        Mode::standard(100.khz()),
+        clocks,
+        apb1,
+        10000,
+    );
+
+    // Init SCCB module
+    let sccb = SCCB::new(&mut i2c);
+
+    // Establish communication with the OV9655
+    sccb.reset(&mut i2c).unwrap();
+    delay.delay_ms(1000_u16);
+    sccb.check_id(&mut i2c).unwrap();
+
+    // Generate register map
+    let mut reg_vals = RegMap::new();
+    get_config(&mut reg_vals);
+
+    // Configure the OV9655 using the register map
+    sccb.apply_config(&mut i2c, &reg_vals, false).unwrap();
+
+    // Setup DCMI and DMA2 to transfer from the DCMI peripheral into memory
+    let dma_size_words = FRAME_SIZE / 4;
+    parallel::dcmi_setup();
+    parallel::dma2_setup(dma_size_words.try_into().unwrap());
+}
+
+/// Start capturing frames continuously.
+pub fn start() {
+    parallel::start_capture();
+}
+
+/// Stop capturing frames.
+pub fn stop() {
+    parallel::stop_capture();
+}
+
+/// Update camera frame data destination memory address 0.
+pub fn update_addr0(address: u32) {
+    parallel::update_addr0(address);
+}
+
+/// Update camera frame data destination memory address 1.
+pub fn update_addr1(address: u32) {
+    parallel::update_addr1(address);
+}
+
+/// Given an empty `RegMap`, fill out the register values for QVGA (320x240) resolution with
+/// RGB565.
+fn get_config(reg_vals: &mut RegMap) {
     // 30 fps VGA with VarioPixel and RGB output data format
     reg_vals.insert(0x12, 0x63).unwrap();
 

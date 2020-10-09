@@ -1,6 +1,6 @@
 //! A driver for the parallel data bus on the OV9655 using the STM32F7 DCMI peripheral and DMA2
-//! to transfer image sensor data into memory. Assumes that GPIO and RCC are setup prior to using
-//! this module.
+//! to transfer image sensor data into memory. Enables DCMI and DMA2 clocks in RCC. Does not do
+//! any GPIO configuration.
 
 use stm32f7xx_hal::pac::{DCMI, DMA2, RCC};
 
@@ -39,8 +39,11 @@ pub fn dcmi_setup() {
     });
 }
 
-/// Setup DMA2 to transfer image data from DCMI to memory.
-pub fn dma2_setup(dest_addr1: u32, dest_addr2: u32, dma_size: u16) {
+/// Setup DMA2 to transfer image data from DCMI to memory. Does not update
+/// the address registers, that must be done seperately `update_addr0`
+/// with and `update_addr1` functions since address may change during
+/// ping-pong DMA.
+pub fn dma2_setup(dma_size: u16) {
     let dma2_regs = unsafe { &(*DMA2::ptr()) };
     let rcc_regs = unsafe { &(*RCC::ptr()) };
 
@@ -115,12 +118,6 @@ pub fn dma2_setup(dest_addr1: u32, dest_addr2: u32, dma_size: u16) {
     dma2_regs.st[DMA_STREAM]
         .par
         .write(|w| w.pa().bits(DCMI_DR_ADDR));
-    dma2_regs.st[DMA_STREAM]
-        .m0ar
-        .write(|w| w.m0a().bits(dest_addr1));
-    dma2_regs.st[DMA_STREAM]
-        .m1ar
-        .write(|w| w.m1a().bits(dest_addr2));
 }
 
 /// Start DCMI capture.
@@ -151,4 +148,22 @@ pub fn stop_capture() {
     dcmi_regs
         .cr
         .modify(|_, w| w.enable().clear_bit().capture().clear_bit());
+}
+
+/// Set DMA2 address 0 register.
+pub fn update_addr0(address: u32) {
+    let dma2_regs = unsafe { &(*DMA2::ptr()) };
+
+    dma2_regs.st[DMA_STREAM]
+        .m0ar
+        .write(|w| w.m0a().bits(address));
+}
+
+/// Set DMA2 address 1 register.
+pub fn update_addr1(address: u32) {
+    let dma2_regs = unsafe { &(*DMA2::ptr()) };
+
+    dma2_regs.st[DMA_STREAM]
+        .m1ar
+        .write(|w| w.m1a().bits(address));
 }
