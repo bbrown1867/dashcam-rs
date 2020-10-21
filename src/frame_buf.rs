@@ -1,5 +1,8 @@
 //! Circular frame buffer which updates ping-pong DMA registers using the Iterator pattern.
 
+/// `FrameBuffer` is intialized with a base address, frame size (bytes), and the number frames
+/// that can be stored. The `FrameBuffer` counts the number of frames written and stores them in
+/// SDRAM via the OV9655 DMA address registers, in a circular buffer fashion.
 #[derive(Debug)]
 pub struct FrameBuffer {
     mem_base: u32,
