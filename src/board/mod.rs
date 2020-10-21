@@ -10,6 +10,7 @@ use stm32f7xx_hal::{
     time::{MegaHertz, U32Ext},
 };
 
+/// Type alias for the push button GPIO pin.
 pub type ButtonPin = gpioi::PI11<Input<Floating>>;
 
 /// 25 MHz external oscillator (X2) is the HSE clock source.
@@ -17,7 +18,7 @@ pub fn get_xtal() -> MegaHertz {
     25.mhz()
 }
 
-/// Configure push button PI11 as an external interrupt.
+/// Configure GPIO pin PI11 connected to the USER button as an external interrupt.
 pub fn setup_button(rcc: &mut RCC, mut syscfg: SYSCFG, mut exti: EXTI, gpio: GPIOI) -> ButtonPin {
     let gpioi = gpio.split();
     let mut button = gpioi.pi11.into_floating_input();
