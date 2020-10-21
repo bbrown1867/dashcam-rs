@@ -4,6 +4,7 @@
 #![no_main]
 
 mod board;
+mod frame_buf;
 mod ov9655;
 mod util;
 
@@ -20,7 +21,7 @@ use stm32f7xx_hal::{
 const APP: () = {
     // Static resources.
     struct Resources {
-        num_caps: u32,
+        fb: frame_buf::FrameBuffer,
     }
 
     // Program entry point.
@@ -54,16 +55,14 @@ const APP: () = {
         board::display::draw_welcome(&mut display);
 
         // SDRAM
-        let (sdram_ptr, _sdram_size) = board::sdram::init(&clocks, &mut delay);
+        let (sdram_ptr, sdram_size) = board::sdram::init(&clocks, &mut delay);
 
         // OV9655
         ov9655::init(pac_periph.I2C1, &mut rcc.apb1, clocks, &mut delay);
 
-        // Set destination addresses to first two locations in SDRAM
-        let frame_buffer1: u32 = sdram_ptr as u32;
-        let frame_buffer2: u32 = frame_buffer1 + ov9655::FRAME_SIZE;
-        ov9655::update_addr0(frame_buffer1);
-        ov9655::update_addr1(frame_buffer2);
+        // Initialize frame buffer
+        let fb =
+            frame_buf::FrameBuffer::new(sdram_ptr as u32, sdram_size as u32, ov9655::FRAME_SIZE);
 
         // Allow RTT buffer to flush and give time to view screen prior to starting
         rprintln!("Starting image capture...");
@@ -73,7 +72,7 @@ const APP: () = {
         ov9655::start();
 
         // Initialize static resources
-        init::LateResources { num_caps: 0 }
+        init::LateResources { fb }
     }
 
     // Idle task.
@@ -86,7 +85,7 @@ const APP: () = {
     }
 
     // Handle DMA interrupts. A DMA DONE interrupt indicates a frame was captured in memory.
-    #[task(binds = DMA2_STREAM1, priority = 1, resources = [num_caps])]
+    #[task(binds = DMA2_STREAM1, priority = 1, resources = [fb])]
     fn dma_isr(cx: dma_isr::Context) {
         // Read and clear interrupt status
         let int_status = unsafe {
@@ -97,7 +96,7 @@ const APP: () = {
         };
 
         // TODO: Remove this eventually
-        if *cx.resources.num_caps == 1000 {
+        if cx.resources.fb.num_caps == 1000 {
             rprintln!("Done!");
             ov9655::stop();
             return;
@@ -105,11 +104,8 @@ const APP: () = {
 
         // See if a frame capture completed
         if int_status & 0x800 == 0x800 {
-            // Determine which frame buffer in the ping-pong DMA
-            let frame_buffer = match *cx.resources.num_caps % 2 {
-                0 => 0xC000_0000,
-                _ => 0xC000_0000 + ov9655::FRAME_SIZE,
-            };
+            // Update circular frame buffer
+            let frame_buffer = cx.resources.fb.next().unwrap();
 
             // Draw image on display using DMA2D
             match board::display::draw_image(
@@ -122,7 +118,6 @@ const APP: () = {
             };
 
             rprintln!("Capture complete into frame buffer = {:X}", frame_buffer);
-            *cx.resources.num_caps += 1;
         }
     }
 };
