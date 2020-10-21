@@ -24,6 +24,9 @@ pub const FRAME_HEIGHT: u16 = 240;
 /// Number of total bytes in one QVGA frame using RGB565 format (2 pixels per byte).
 pub const FRAME_SIZE: u32 = (FRAME_WIDTH as u32) * (FRAME_HEIGHT as u32) * 2;
 
+/// Time between frames in milliseconds
+pub const FRAME_RATE: u32 = 33_u32;
+
 /// Initialize the OV9655 device driver.
 /// * Performs camera configuration using the SCCB (I2C) port.
 /// * Sets up DCMI and DMA2 to handle data capture.
@@ -76,12 +79,17 @@ pub fn stop() {
 
 /// Update camera frame data destination memory address 0.
 pub fn update_addr0(address: u32) {
-    parallel::update_addr0(address);
+    parallel::dma2_update_addr0(address);
 }
 
 /// Update camera frame data destination memory address 1.
 pub fn update_addr1(address: u32) {
-    parallel::update_addr1(address);
+    parallel::dma2_update_addr1(address);
+}
+
+/// Handle the frame interrupt. Returns `true` if a frame capture completed, `false` otherwise.
+pub fn handle_dma_done() -> bool {
+    return parallel::dma2_isr();
 }
 
 /// Given an empty `RegMap`, fill out the register values for QVGA (320x240) resolution with

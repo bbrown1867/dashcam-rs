@@ -120,7 +120,41 @@ pub fn dma2_setup(dma_size: u16) {
         .write(|w| w.pa().bits(DCMI_DR_ADDR));
 }
 
-/// Start DCMI capture.
+/// Set DMA2 address 0 register.
+pub fn dma2_update_addr0(address: u32) {
+    let dma2_regs = unsafe { &(*DMA2::ptr()) };
+
+    dma2_regs.st[DMA_STREAM]
+        .m0ar
+        .write(|w| w.m0a().bits(address));
+}
+
+/// Set DMA2 address 1 register.
+pub fn dma2_update_addr1(address: u32) {
+    let dma2_regs = unsafe { &(*DMA2::ptr()) };
+
+    dma2_regs.st[DMA_STREAM]
+        .m1ar
+        .write(|w| w.m1a().bits(address));
+}
+
+/// Read and clear low interrupt status register and return `true` if the transfer is complete.
+pub fn dma2_isr() -> bool {
+    unsafe {
+        let dma2_regs = &(*DMA2::ptr());
+
+        // Did the DMA done interrupt fire?
+        let dma_done = dma2_regs.lisr.read().tcif1().is_complete();
+
+        // Read and clear interrupt status
+        let int_status = dma2_regs.lisr.read().bits();
+        dma2_regs.lifcr.write(|w| w.bits(int_status));
+
+        dma_done
+    }
+}
+
+/// Start DCMI capture. Programs registers for both DMA2 and DCMI peripherals.
 pub fn start_capture() {
     let dma2_regs = unsafe { &(*DMA2::ptr()) };
     let dcmi_regs = unsafe { &(*DCMI::ptr()) };
@@ -134,7 +168,7 @@ pub fn start_capture() {
         .modify(|_, w| w.enable().set_bit().capture().set_bit());
 }
 
-/// Stop DCMI capture.
+/// Stop DCMI capture. Programs registers for both DMA2 and DCMI peripherals.
 pub fn stop_capture() {
     let dma2_regs = unsafe { &(*DMA2::ptr()) };
     let dcmi_regs = unsafe { &(*DCMI::ptr()) };
@@ -148,22 +182,4 @@ pub fn stop_capture() {
     dcmi_regs
         .cr
         .modify(|_, w| w.enable().clear_bit().capture().clear_bit());
-}
-
-/// Set DMA2 address 0 register.
-pub fn update_addr0(address: u32) {
-    let dma2_regs = unsafe { &(*DMA2::ptr()) };
-
-    dma2_regs.st[DMA_STREAM]
-        .m0ar
-        .write(|w| w.m0a().bits(address));
-}
-
-/// Set DMA2 address 1 register.
-pub fn update_addr1(address: u32) {
-    let dma2_regs = unsafe { &(*DMA2::ptr()) };
-
-    dma2_regs.st[DMA_STREAM]
-        .m1ar
-        .write(|w| w.m1a().bits(address));
 }
