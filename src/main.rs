@@ -8,10 +8,12 @@ mod frame_buf;
 mod ov9655;
 mod util;
 
+use ov9655::{FRAME_HEIGHT, FRAME_RATE, FRAME_SIZE, FRAME_WIDTH};
 use rtt_target::{rprintln, rtt_init, set_print_channel};
 use stm32f7xx_hal::{
     delay::Delay,
-    pac::{self, DMA2},
+    gpio::ExtiPin,
+    pac,
     prelude::_embedded_hal_blocking_delay_DelayMs,
     rcc::{HSEClock, HSEClockMode, RccExt},
     time::U32Ext,
@@ -22,6 +24,8 @@ const APP: () = {
     // Static resources.
     struct Resources {
         fb: frame_buf::FrameBuffer,
+        button: board::ButtonPin,
+        delay: Delay,
     }
 
     // Program entry point.
@@ -43,9 +47,18 @@ const APP: () = {
         // Get peripherals from RTIC
         let pac_periph: pac::Peripherals = cx.device;
         let cm_periph: cortex_m::Peripherals = cx.core;
+        let mut rcc = pac_periph.RCC;
+
+        // Setup button
+        let button = board::setup_button(
+            &mut rcc,
+            pac_periph.SYSCFG,
+            pac_periph.EXTI,
+            pac_periph.GPIOI,
+        );
 
         // Clocking: Set HSE to reflect the board and ramp up SYSCLK to max possible speed
-        let mut rcc = pac_periph.RCC.constrain();
+        let mut rcc = rcc.constrain();
         let hse_cfg = HSEClock::new(board::get_xtal(), HSEClockMode::Oscillator);
         let clocks = rcc.cfgr.hse(hse_cfg).sysclk(216.mhz()).freeze();
         let mut delay = Delay::new(cm_periph.SYST, clocks);
@@ -61,18 +74,17 @@ const APP: () = {
         ov9655::init(pac_periph.I2C1, &mut rcc.apb1, clocks, &mut delay);
 
         // Initialize frame buffer
-        let fb =
-            frame_buf::FrameBuffer::new(sdram_ptr as u32, sdram_size as u32, ov9655::FRAME_SIZE);
+        let fb = frame_buf::FrameBuffer::new(sdram_ptr as u32, sdram_size as u32, FRAME_SIZE);
 
         // Allow RTT buffer to flush and give time to view screen prior to starting
         rprintln!("Starting image capture...");
-        delay.delay_ms(500_u16);
+        delay.delay_ms(500_u32);
 
         // Start capture
         ov9655::start();
 
         // Initialize static resources
-        init::LateResources { fb }
+        init::LateResources { fb, button, delay }
     }
 
     // Idle task.
@@ -86,38 +98,56 @@ const APP: () = {
 
     // Handle DMA interrupts. A DMA DONE interrupt indicates a frame was captured in memory.
     #[task(binds = DMA2_STREAM1, priority = 1, resources = [fb])]
-    fn dma_isr(cx: dma_isr::Context) {
-        // Read and clear interrupt status
-        let int_status = unsafe {
-            let dma2_regs = &(*DMA2::ptr());
-            let int_status = dma2_regs.lisr.read().bits();
-            dma2_regs.lifcr.write(|w| w.bits(int_status));
-            int_status
-        };
-
-        // TODO: Remove this eventually
-        if cx.resources.fb.num_caps == 1000 {
-            rprintln!("Done!");
-            ov9655::stop();
-            return;
-        }
-
-        // See if a frame capture completed
-        if int_status & 0x800 == 0x800 {
-            // Update circular frame buffer
-            let frame_buffer = cx.resources.fb.next().unwrap();
+    fn dma_isr(mut cx: dma_isr::Context) {
+        // See if a frame capture completed, handle_dma_done will clear pending interrupt
+        if ov9655::handle_dma_done() {
+            // Update circular frame buffer, must be done in a lock since lower priority task
+            let address = cx.resources.fb.lock(|fb| fb.next().unwrap());
 
             // Draw image on display using DMA2D
-            match board::display::draw_image(
-                frame_buffer,
-                ov9655::FRAME_WIDTH,
-                ov9655::FRAME_HEIGHT,
-            ) {
-                true => rprintln!("Error: Cannot display image. Frame rate faster than DMA2D!"),
+            match board::display::draw_image(address, FRAME_WIDTH, FRAME_HEIGHT) {
+                true => rprintln!("Error: Cannot display image. Frame rate too fast!"),
                 false => (),
             };
+        }
+    }
 
-            rprintln!("Capture complete into frame buffer = {:X}", frame_buffer);
+    // Handle a button interrupt. At the moment this does a playback of frames in SDRAM.
+    #[task(binds = EXTI15_10, priority = 2, resources = [fb, button, delay])]
+    fn button_isr(cx: button_isr::Context) {
+        let fb: &mut frame_buf::FrameBuffer = cx.resources.fb;
+        let button: &mut board::ButtonPin = cx.resources.button;
+        let delay: &mut Delay = cx.resources.delay;
+
+        // Clear pending interrupt
+        button.clear_interrupt_pending_bit();
+
+        // Stop capturing frames
+        ov9655::stop();
+
+        // Usually the buffer will be full, but handle edge case where it is not
+        let num_frames = match fb.num_caps < fb.num_frames {
+            true => fb.num_caps,
+            false => fb.num_frames,
+        };
+
+        // Now cycle through the frames in the buffer and display them
+        rprintln!("Playing back images in frame buffer!");
+        loop {
+            fb.num_caps -= num_frames;
+            for _ in 0..num_frames {
+                // Iterate on the frame buffer
+                let address = fb.next().unwrap();
+
+                // Draw image on display using DMA2D
+                match board::display::draw_image(address, FRAME_WIDTH, FRAME_HEIGHT) {
+                    true => rprintln!("Error: Cannot display image. Frame rate too fast!"),
+                    false => (),
+                };
+
+                // Block to simulate captured frame rate
+                delay.delay_ms(FRAME_RATE);
+            }
         }
     }
 };

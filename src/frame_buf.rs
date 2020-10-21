@@ -4,7 +4,7 @@
 pub struct FrameBuffer {
     mem_base: u32,
     frame_size: u32,
-    num_frames: u32,
+    pub num_frames: u32,
     pub num_caps: u32,
 }
 
