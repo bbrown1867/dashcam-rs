@@ -1,5 +1,5 @@
 [default.general]
-chip = "STM32F746NG"
+chip = "STM32F746NGHx"
 log_level = "WARN"
 
 [default.probe]

@@ -1,7 +1,9 @@
-//! SDRAM driver for the IS42S32400F located on the STM32F746G Discovery Board. Adapted from the
-//! example code in the `stm32-fmc` crate.
+//! SDRAM driver for the IS42S32400F-6BL located on the STM32F746G Discovery Board. Adapted from
+//! the example code in the `stm32-fmc` crate. Note that the board has 16/32 data lines connected,
+//! so the is42s16400j_7 is used since the parameters are pretty close to the same and the
+//! IS42S32400F-6BL is not in `stm32-fmc` at the moment.
 
-use stm32_fmc::devices::is42s32400f_6;
+use stm32_fmc::devices::is42s16400j_7;
 use stm32f7xx_hal::{
     delay::Delay,
     fmc::FmcExt,
@@ -83,7 +85,7 @@ pub fn init(clocks: &Clocks, delay: &mut Delay) -> (*mut u32, usize) {
     // Create SDRAM object using IS42S32400F implementation
     let mut sdram = pac_periph
         .FMC
-        .sdram(fmc_io, is42s32400f_6::Is42s32400f {}, clocks);
+        .sdram(fmc_io, is42s16400j_7::Is42s16400j {}, clocks);
 
     // Initialize and return raw pointer and size in bytes
     let ram_ptr: *mut u32 = sdram.init(delay);

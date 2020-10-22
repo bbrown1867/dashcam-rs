@@ -17,15 +17,10 @@ rtt-target = { version = "0.2.2", features = ["cortex-m"] }
 
 # HAL
 embedded-hal = "0.2.3"
+stm32-fmc = { version = "0.2.0", features = ["sdram"] }
 
-# Use my fork in order to have the new SDRAM chip implementation
-[dependencies.stm32-fmc]
-git = "https://github.com/bbrown1867/stm32-fmc"
-branch = "0.1.2_add-chip"
-features = ["sdram"]
-
-# Have to fork the HAL in order to point to the forked version of stm32-fmc
+# TODO: Use version 0.3.0 when it happens, update commit hash as needed
 [dependencies.stm32f7xx-hal]
-git = "https://github.com/bbrown1867/stm32f7xx-hal"
-branch = "fmc"
+git = "https://github.com/stm32-rs/stm32f7xx-hal"
+rev = "690a898327b27ecd236ae6b8d9ba395eb889bc38"
 features = ["rt", "fmc", "stm32f746"]

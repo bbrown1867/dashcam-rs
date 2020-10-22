@@ -217,9 +217,9 @@ dependencies = [
 
 [[package]]
 name = "micromath"
-version = "1.0.1"
+version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cedf8513604f9696e9ed523511dd27e7ccb5502e414958f1669e492c7d85dcf1"
+checksum = "be00a244d4394124986da477e8b2814dcb7995ab238817d9037bc336c4b0b843"
 
 [[package]]
 name = "nb"
@@ -238,9 +238,9 @@ checksum = "546c37ac5d9e56f55e73b677106873d9d9f5190605e41a856503623648488cae"
 
 [[package]]
 name = "proc-macro2"
-version = "1.0.23"
+version = "1.0.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "51ef7cd2518ead700af67bf9d1a658d90b6037d77110fd9c0445429d0ba1c6c9"
+checksum = "1e0704ee1a7e00d7bb417d0770ea303c1bccbabf0ef1667dae92b5967f5f8a71"
 dependencies = [
  "unicode-xid",
 ]
@@ -319,8 +319,9 @@ checksum = "a8f112729512f8e442d81f95a8a7ddf2b7c6b8a1a6f509a95864142b30cab2d3"
 
 [[package]]
 name = "stm32-fmc"
-version = "0.1.2"
-source = "git+https://github.com/bbrown1867/stm32-fmc?branch=0.1.2_add-chip#580f3b707147a6e87df4126ee880b5f4dbd79eab"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a29472385971ff87bb354b1c5de67f63f2cac881b18bc4dd28b92f6093109258"
 dependencies = [
  "embedded-hal",
 ]
@@ -340,7 +341,7 @@ dependencies = [
 [[package]]
 name = "stm32f7xx-hal"
 version = "0.2.0"
-source = "git+https://github.com/bbrown1867/stm32f7xx-hal?branch=fmc#0fb283f427fb9d4dcaf7b5869628c0807544b0bf"
+source = "git+https://github.com/stm32-rs/stm32f7xx-hal?rev=690a898327b27ecd236ae6b8d9ba395eb889bc38#690a898327b27ecd236ae6b8d9ba395eb889bc38"
 dependencies = [
  "as-slice",
  "bare-metal",
@@ -357,9 +358,9 @@ dependencies = [
 
 [[package]]
 name = "syn"
-version = "1.0.42"
+version = "1.0.46"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9c51d92969d209b54a98397e1b91c8ae82d8c87a7bb87df0b29aa2ad81454228"
+checksum = "5ad5de3220ea04da322618ded2c42233d02baca219d6f160a3e9c87cda16c942"
 dependencies = [
  "proc-macro2",
  "quote",
