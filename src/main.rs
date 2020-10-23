@@ -102,7 +102,7 @@ const APP: () = {
         // See if a frame capture completed, handle_dma_done will clear pending interrupt
         if ov9655::handle_dma_done() {
             // Update circular frame buffer, must be done in a lock since lower priority task
-            let address = cx.resources.fb.lock(|fb| fb.next().unwrap());
+            let address = cx.resources.fb.lock(|fb| fb.update());
 
             // Draw image on display using DMA2D
             match board::display::draw_image(address, FRAME_WIDTH, FRAME_HEIGHT) {
@@ -125,20 +125,14 @@ const APP: () = {
         // Stop capturing frames
         ov9655::stop();
 
-        // Usually the buffer will be full, but handle edge case where it is not
-        let num_frames = match fb.num_caps < fb.num_frames {
-            true => fb.num_caps,
-            false => fb.num_frames,
-        };
-
         // Now cycle through the frames in the buffer and display them
         rprintln!("Playing back images in frame buffer!");
         loop {
-            fb.num_caps -= num_frames;
-            for _ in 0..num_frames {
-                // Iterate on the frame buffer
-                let address = fb.next().unwrap();
+            // Clone since we do this on a loop
+            let curr_fb = fb.clone();
 
+            // Iterate on the frame buffer
+            for address in curr_fb {
                 // Draw image on display using DMA2D
                 match board::display::draw_image(address, FRAME_WIDTH, FRAME_HEIGHT) {
                     true => rprintln!("Error: Cannot display image. Frame rate too fast!"),
