@@ -5,6 +5,7 @@
 
 mod board;
 mod frame_buf;
+mod nvm;
 mod ov9655;
 mod util;
 
@@ -23,6 +24,7 @@ use stm32f7xx_hal::{
 const APP: () = {
     // Static resources.
     struct Resources {
+        nvm: nvm::NonVolatileMemory,
         fb: frame_buf::FrameBuffer,
         button: board::ButtonPin,
         delay: Delay,
@@ -57,6 +59,14 @@ const APP: () = {
             pac_periph.GPIOI,
         );
 
+        // Setup QSPI
+        board::qspi::init(
+            &mut rcc,
+            pac_periph.GPIOB,
+            pac_periph.GPIOD,
+            pac_periph.GPIOE,
+        );
+
         // Clocking: Set HSE to reflect the board and ramp up SYSCLK to max possible speed
         let mut rcc = rcc.constrain();
         let hse_cfg = HSEClock::new(board::get_xtal(), HSEClockMode::Oscillator);
@@ -69,6 +79,9 @@ const APP: () = {
 
         // SDRAM
         let (sdram_ptr, sdram_size) = board::sdram::init(&clocks, &mut delay);
+
+        // NVM
+        let nvm = nvm::NonVolatileMemory::new();
 
         // OV9655
         ov9655::init(pac_periph.I2C1, &mut rcc.apb1, clocks, &mut delay);
@@ -84,7 +97,12 @@ const APP: () = {
         ov9655::start();
 
         // Initialize static resources
-        init::LateResources { fb, button, delay }
+        init::LateResources {
+            nvm,
+            fb,
+            button,
+            delay,
+        }
     }
 
     // Idle task.
@@ -113,8 +131,9 @@ const APP: () = {
     }
 
     // Handle a button interrupt. At the moment this does a playback of frames in SDRAM.
-    #[task(binds = EXTI15_10, priority = 2, resources = [fb, button, delay])]
+    #[task(binds = EXTI15_10, priority = 2, resources = [nvm, fb, button, delay])]
     fn button_isr(cx: button_isr::Context) {
+        let nvm: &mut nvm::NonVolatileMemory = cx.resources.nvm;
         let fb: &mut frame_buf::FrameBuffer = cx.resources.fb;
         let button: &mut board::ButtonPin = cx.resources.button;
         let delay: &mut Delay = cx.resources.delay;
@@ -124,6 +143,12 @@ const APP: () = {
 
         // Stop capturing frames
         ov9655::stop();
+
+        // Write frames to non-volatile memory
+        let curr_fb = fb.clone();
+        for address in curr_fb {
+            nvm.write(address, FRAME_SIZE);
+        }
 
         // Now cycle through the frames in the buffer and display them
         rprintln!("Playing back images in frame buffer!");
