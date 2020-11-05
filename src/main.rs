@@ -65,7 +65,10 @@ const APP: () = {
             pac_periph.GPIOB,
             pac_periph.GPIOD,
             pac_periph.GPIOE,
+            pac_periph.QUADSPI,
         );
+
+        board::qspi::check_id().unwrap();
 
         // Clocking: Set HSE to reflect the board and ramp up SYSCLK to max possible speed
         let mut rcc = rcc.constrain();
