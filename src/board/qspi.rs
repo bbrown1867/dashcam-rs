@@ -66,7 +66,7 @@ pub fn init(rcc: &mut RCC, gpiob: GPIOB, gpiod: GPIOD, gpioe: GPIOE, qspi: QUADS
 
     let _qspi_ncs = gpiob
         .pb6
-        .into_alternate_af9()
+        .into_alternate_af10()
         .internal_pull_up(true)
         .set_speed(Speed::VeryHigh);
 
@@ -117,6 +117,7 @@ pub fn check_id() -> Result<(), QspiError> {
     while idx < len {
         // Check if there are bytes in the FIFO
         let num_bytes = qspi_regs.sr.read().flevel().bits();
+        rprintln!("Status = {}", qspi_regs.sr.read().bits());
         if num_bytes > 0 {
             // Read a word
             let val = qspi_regs.dr.read().data().bits();
