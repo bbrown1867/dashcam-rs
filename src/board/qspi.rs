@@ -1,5 +1,6 @@
 //! QSPI driver for the MT25QL128ABA located on the STM32F746G Discovery Board.
 
+use core::convert::TryInto;
 use rtt_target::rprintln;
 use stm32f7xx_hal::{
     gpio::{GpioExt, Speed},
@@ -11,9 +12,33 @@ use stm32f7xx_hal::{
 pub enum QspiError {
     /// Flash device ID mismatch.
     ReadDeviceId,
+    /// Timeout during a polling transaction.
+    Timeout,
 }
 
-/// QSPI instruction, address, data widths for CCR.
+/// Commands and other information specific to the MT25Q.
+struct FlashDevice;
+
+impl FlashDevice {
+    pub const CMD_READ_ID: u8 = 0x9F;
+
+    pub const DEVICE_ID_MANF: u8 = 0x20;
+    pub const DEVICE_ID_MEMT: u8 = 0xBA;
+    pub const DEVICE_ID_MEMC: u8 = 0x18;
+}
+
+/// QSPI functional mode.
+struct QspiMode;
+
+#[allow(dead_code)]
+impl QspiMode {
+    pub const INDIRECT_WRITE: u8 = 0b00;
+    pub const INDIRECT_READ: u8 = 0b01;
+    pub const AUTO_POLLING: u8 = 0b10;
+    pub const MEMORY_MAPPED: u8 = 0b11;
+}
+
+/// QSPI transactions contain configurable instruction, address, and data fields.
 struct QspiWidth;
 
 #[allow(dead_code)]
@@ -90,18 +115,25 @@ pub fn init(rcc: &mut RCC, gpiob: GPIOB, gpiod: GPIOD, gpioe: GPIOE, qspi: QUADS
 }
 
 pub fn check_id() -> Result<(), QspiError> {
-    let len: usize = 3;
-    let mut idx: usize = 0;
-    let mut buf = [0, 0, 0];
+    let mut device_id = [0, 0, 0];
+    polling_read(&mut device_id, 3, FlashDevice::CMD_READ_ID)?;
+    if device_id[0] != FlashDevice::DEVICE_ID_MANF
+        || device_id[1] != FlashDevice::DEVICE_ID_MEMT
+        || device_id[2] != FlashDevice::DEVICE_ID_MEMC
+    {
+        Err(QspiError::ReadDeviceId)
+    } else {
+        Ok(())
+    }
+}
 
+fn polling_read(buf: &mut [u8], len: usize, instruction: u8) -> Result<(), QspiError> {
     let qspi_regs = unsafe { &(*QUADSPI::ptr()) };
-
     unsafe {
         qspi_regs.dlr.write(|w| w.bits(len as u32 - 1));
-
         qspi_regs.ccr.write(|w| {
             w.fmode()
-                .bits(0b01)
+                .bits(QspiMode::INDIRECT_READ)
                 // The transaction has data and it is single wire
                 .dmode()
                 .bits(QspiWidth::SING)
@@ -110,36 +142,33 @@ pub fn check_id() -> Result<(), QspiError> {
                 .bits(QspiWidth::SING)
                 // The instruction is READ_ID
                 .instruction()
-                .bits(0x9E)
+                .bits(instruction)
         });
     }
 
+    let timeout = 10000;
+    let mut cnt: u32 = 0;
+    let mut idx: usize = 0;
     while idx < len {
         // Check if there are bytes in the FIFO
         let num_bytes = qspi_regs.sr.read().flevel().bits();
-        rprintln!("Status = {}", qspi_regs.sr.read().bits());
         if num_bytes > 0 {
             // Read a word
             let val = qspi_regs.dr.read().data().bits();
-            rprintln!("FIFO Read = {:X}", val);
 
             // Unpack the word
             let cnt = if num_bytes >= 4 { 4 } else { num_bytes };
             for i in 0..cnt {
-                let byte = (val & (0xFF << i * 8)) >> i * 8;
-                buf[idx] = byte;
+                buf[idx] = ((val & (0xFF << i * 8)) >> i * 8).try_into().unwrap();
                 idx += 1;
+            }
+        } else {
+            cnt += 1;
+            if cnt == timeout {
+                return Err(QspiError::Timeout);
             }
         }
     }
 
-    for i in 0..len {
-        rprintln!("Result Buffer[{}] = {:X}", i, buf[i]);
-    }
-
-    if buf[0] != 0x20 || buf[1] != 0xBA || buf[2] != 0x18 {
-        Err(QspiError::ReadDeviceId)
-    } else {
-        Ok(())
-    }
+    Ok(())
 }
