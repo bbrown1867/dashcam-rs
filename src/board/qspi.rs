@@ -398,7 +398,7 @@ fn setup_transaction(transaction: &QspiTransaction) {
 pub mod tests {
     use super::*;
 
-    pub fn mem_test() {
+    pub fn test_mem() {
         const LEN: usize = 256;
         let mut read_buffer: [u8; LEN] = [0; LEN];
         let mut write_buffer: [u8; LEN] = [0; LEN];
