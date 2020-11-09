@@ -51,7 +51,7 @@ The conceptual design is shown the diagram below. The image data path is shown o
     * __Rationale__: This device is intended for high-performance embedded applications like audio/video.
     * __Rationale__: This device contains hardware for video (DCIM) and bulk storage (QSPI, SDIO).
 2. The dash cam shall use an OV9655 color CMOS camera for video capture.
-    * __Rationale__: Compatible with DCIM on the STM32F746NG and example C code exists
+    * __Rationale__: Compatible with DCIM on the STM32F746NG and example C code exists.
     * __Rationale__: Has lots of desirable features like high resolution (1.3 MP), color, multiple output data formats, 30 fps.
     * __Rationale__: Several development boards exist ([Waveshare](https://www.waveshare.com/ov9655-camera-board.htm), [STM32F4DIS-CAM](https://www.newark.com/stmicroelectronics/stm32f4dis-cam/module-1-3mp-camera-f4-discovery/dp/47W1732)) that will easily connect to a microcontroller development board.
     * _Note: OmniVision does not market this product anymore and I can't find any sellers for the chip itself. This could be a problem when making a custom PCB. The only in-stock OmniVision product with the same parallel interface I could find on DigiKey was the OVM7692. However it has a much lower resolution and no datasheet in the public domain._
