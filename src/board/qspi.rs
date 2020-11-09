@@ -23,11 +23,14 @@ impl FlashDevice {
     pub const CMD_READ_ID: u8 = 0x9F;
     pub const CMD_FAST_READ: u8 = 0x6B;
     pub const CMD_FAST_PROGRAM: u8 = 0x32;
+    pub const CMD_SUBSECT_ERASE: u8 = 0x20;
     pub const CMD_READ_FLAG_STATUS: u8 = 0x70;
     pub const CMD_WRITE_ENABLE: u8 = 0x06;
     pub const DEVICE_ID_MANF: u8 = 0x20;
     pub const DEVICE_ID_MEMT: u8 = 0xBA;
     pub const DEVICE_ID_MEMC: u8 = 0x18;
+    pub const DEVICE_MAX_ADDRESS: u32 = 0x00FF_FFFF;
+    pub const DEVICE_SUBSECTOR_SIZE: u32 = 4096;
 }
 
 /// QSPI transaction description.
@@ -133,13 +136,14 @@ pub fn init(rcc: &mut RCC, gpiob: GPIOB, gpiod: GPIOD, gpioe: GPIOE, qspi: QUADS
 /// Read `len` bytes at flash device `src` address into `dest`.
 pub fn memory_read(dest: &mut [u8], src: u32, len: usize) -> Result<(), QspiError> {
     assert!(len > 0);
+    assert!(src + (len as u32) <= FlashDevice::DEVICE_MAX_ADDRESS);
 
     let transaction = QspiTransaction {
         iwidth: QspiWidth::SING,
         awidth: QspiWidth::SING,
         dwidth: QspiWidth::QUAD,
         instruction: FlashDevice::CMD_FAST_READ,
-        address: Some(src & 0x00FF_FFFF),
+        address: Some(src & FlashDevice::DEVICE_MAX_ADDRESS),
         dummy: 10,
         data_len: Some(len),
     };
@@ -150,10 +154,9 @@ pub fn memory_read(dest: &mut [u8], src: u32, len: usize) -> Result<(), QspiErro
 /// Write `len` bytes in `src` to flash device `dest` address.
 pub fn memory_write(dest: u32, src: &mut [u8], len: usize) -> Result<(), QspiError> {
     assert!(len > 0);
+    assert!(dest + (len as u32) <= FlashDevice::DEVICE_MAX_ADDRESS);
 
     write_enable()?;
-
-    rprintln!("Write enable complete");
 
     // Program memeory (TODO: For loop for each 256 byte chunk)
     let transaction = QspiTransaction {
@@ -161,14 +164,12 @@ pub fn memory_write(dest: u32, src: &mut [u8], len: usize) -> Result<(), QspiErr
         awidth: QspiWidth::SING,
         dwidth: QspiWidth::QUAD,
         instruction: FlashDevice::CMD_FAST_PROGRAM,
-        address: Some(dest & 0x00FF_FFFF),
+        address: Some(dest & FlashDevice::DEVICE_MAX_ADDRESS),
         dummy: 10,
         data_len: Some(len),
     };
 
     polling_write(src, transaction)?;
-
-    rprintln!("Write complete");
 
     // Poll status
     let mut status = 0;
@@ -179,9 +180,46 @@ pub fn memory_write(dest: u32, src: &mut [u8], len: usize) -> Result<(), QspiErr
         }
     }
 
-    rprintln!("Status complete = {}", status);
-
     Ok(())
+}
+
+/// Erase at least `len` bytes at `src` and return how many bytes were actually erased.
+pub fn memory_erase(src: u32, len: usize) -> Result<u32, QspiError> {
+    assert!(len > 0);
+    assert!(src + (len as u32) <= FlashDevice::DEVICE_MAX_ADDRESS);
+
+    write_enable()?;
+
+    let mut num_erased_bytes: u32 = 0;
+    let mut addr: u32 = src - (src % FlashDevice::DEVICE_SUBSECTOR_SIZE);
+    while num_erased_bytes < (len as u32) {
+        let transaction = QspiTransaction {
+            iwidth: QspiWidth::SING,
+            awidth: QspiWidth::SING,
+            dwidth: QspiWidth::NONE,
+            instruction: FlashDevice::CMD_SUBSECT_ERASE,
+            address: Some(addr & FlashDevice::DEVICE_MAX_ADDRESS),
+            dummy: 0,
+            data_len: None,
+        };
+
+        let mut dummy = [0];
+        polling_read(&mut dummy, transaction)?;
+
+        num_erased_bytes += FlashDevice::DEVICE_SUBSECTOR_SIZE;
+        addr += FlashDevice::DEVICE_SUBSECTOR_SIZE;
+
+        // Poll status
+        let mut status = 0;
+        while status & 0x80 == 0 {
+            status = match read_flag_status() {
+                Ok(status) => status,
+                Err(e) => return Err(e),
+            }
+        }
+    }
+
+    Ok(num_erased_bytes)
 }
 
 /// Check the identification bytes of the flash device to validate communication.
@@ -258,7 +296,6 @@ fn polling_read(buf: &mut [u8], transaction: QspiTransaction) -> Result<(), Qspi
                 // Check if there are bytes in the FIFO
                 let num_bytes = qspi_regs.sr.read().flevel().bits();
                 if num_bytes > 0 {
-                    rprintln!("Num bytes = {}", num_bytes);
                     // Read a word
                     let val = qspi_regs.dr.read().data().bits();
 
@@ -333,11 +370,6 @@ fn setup_transaction(transaction: &QspiTransaction) {
             None => (),
         };
 
-        match transaction.address {
-            Some(addr) => qspi_regs.ar.write(|w| w.bits(addr)),
-            None => (),
-        };
-
         // Note: This part always has 24-bit addressing (0x00FF_FFFF is max address)
         qspi_regs.ccr.write(|w| {
             w.fmode()
@@ -355,6 +387,11 @@ fn setup_transaction(transaction: &QspiTransaction) {
                 .instruction()
                 .bits(transaction.instruction)
         });
+
+        match transaction.address {
+            Some(addr) => qspi_regs.ar.write(|w| w.bits(addr)),
+            None => (),
+        };
     }
 }
 
@@ -362,22 +399,30 @@ pub mod tests {
     use super::*;
 
     pub fn mem_test() {
-        let mut read_buffer: [u8; 256] = [0; 256];
-        let mut write_buffer: [u8; 256] = [0; 256];
-        for i in 0..256 {
+        const LEN: usize = 256;
+        let mut read_buffer: [u8; LEN] = [0; LEN];
+        let mut write_buffer: [u8; LEN] = [0; LEN];
+        for i in 0..LEN {
             read_buffer[i] = i as u8;
         }
 
         // Test erase + write
-        memory_read(&mut read_buffer, 0, 256).unwrap();
-        for i in 0..256 {
+        match memory_erase(0, LEN) {
+            Ok(num) => {
+                assert!(LEN <= num as usize);
+                rprintln!("Successfully erased {} bytes at address {}", num, 0);
+            },
+            Err(e) => panic!("Erase failed with error = {:?}", e),
+        };
+        memory_read(&mut read_buffer, 0, LEN).unwrap();
+        for i in 0..LEN {
             assert!(read_buffer[i] == 0xFF);
         }
 
         // Test write + read
-        memory_write(0, &mut write_buffer, 256).unwrap();
-        memory_read(&mut read_buffer, 0, 256).unwrap();
-        for i in 0..256 {
+        memory_write(0, &mut write_buffer, LEN).unwrap();
+        memory_read(&mut read_buffer, 0, LEN).unwrap();
+        for i in 0..LEN {
             assert!(read_buffer[i] == write_buffer[i]);
         }
     }
