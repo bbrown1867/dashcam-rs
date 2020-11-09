@@ -68,7 +68,7 @@ const APP: () = {
             pac_periph.QUADSPI,
         );
 
-        board::qspi::check_id().unwrap();
+        board::qspi::tests::mem_test();
 
         // Clocking: Set HSE to reflect the board and ramp up SYSCLK to max possible speed
         let mut rcc = rcc.constrain();
