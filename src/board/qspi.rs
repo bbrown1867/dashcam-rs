@@ -165,7 +165,7 @@ pub fn memory_write(dest: u32, src: &mut [u8], len: usize) -> Result<(), QspiErr
         dwidth: QspiWidth::QUAD,
         instruction: FlashDevice::CMD_FAST_PROGRAM,
         address: Some(dest & FlashDevice::DEVICE_MAX_ADDRESS),
-        dummy: 10,
+        dummy: 0,
         data_len: Some(len),
     };
 
@@ -297,12 +297,12 @@ fn polling_read(buf: &mut [u8], transaction: QspiTransaction) -> Result<(), Qspi
                 let num_bytes = qspi_regs.sr.read().flevel().bits();
                 if num_bytes > 0 {
                     // Read a word
-                    let val = qspi_regs.dr.read().data().bits();
+                    let word = qspi_regs.dr.read().data().bits();
 
                     // Unpack the word
                     let num_unpack = if num_bytes >= 4 { 4 } else { num_bytes };
                     for i in 0..num_unpack {
-                        buf[idx] = ((val & (0xFF << i * 8)) >> i * 8).try_into().unwrap();
+                        buf[idx] = ((word & (0xFF << i * 8)) >> i * 8).try_into().unwrap();
                         idx += 1;
                     }
                 } else {
@@ -399,7 +399,8 @@ pub mod tests {
     use super::*;
 
     pub fn test_mem() {
-        const LEN: usize = 8;
+        const ADDR: u32 = 0x1000;
+        const LEN: usize = 16;
         let mut read_buffer: [u8; LEN] = [0; LEN];
         let mut write_buffer: [u8; LEN] = [0; LEN];
         for i in 0..LEN {
@@ -407,21 +408,21 @@ pub mod tests {
         }
 
         // Test erase + write
-        match memory_erase(0, LEN) {
+        match memory_erase(ADDR, LEN) {
             Ok(num) => {
                 assert!(LEN <= num as usize);
-                rprintln!("Successfully erased {} bytes at address {}", num, 0);
+                rprintln!("Successfully erased {} bytes at address {}", num, ADDR);
             },
             Err(e) => panic!("Erase failed with error = {:?}", e),
         };
-        memory_read(&mut read_buffer, 0, LEN).unwrap();
+        memory_read(&mut read_buffer, ADDR, LEN).unwrap();
         for i in 0..LEN {
             assert!(read_buffer[i] == 0xFF);
         }
 
         // Test write + read
-        memory_write(0, &mut write_buffer, LEN).unwrap();
-        memory_read(&mut read_buffer, 0, LEN).unwrap();
+        memory_write(ADDR, &mut write_buffer, LEN).unwrap();
+        memory_read(&mut read_buffer, ADDR, LEN).unwrap();
         for i in 0..LEN {
             rprintln!("{}: write = {:X}, read = {:X}", i, write_buffer[i], read_buffer[i]);
             // assert!(read_buffer[i] == write_buffer[i]);
