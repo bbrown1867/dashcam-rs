@@ -31,6 +31,7 @@ impl FlashDevice {
     pub const DEVICE_ID_MEMC: u8 = 0x18;
     pub const DEVICE_MAX_ADDRESS: u32 = 0x00FF_FFFF;
     pub const DEVICE_SUBSECTOR_SIZE: u32 = 4096;
+    pub const DEVICE_PAGE_SIZE: u32 = 256;
 }
 
 /// QSPI transaction description.
@@ -156,35 +157,57 @@ pub fn memory_write(dest: u32, src: &mut [u8], len: usize) -> Result<(), QspiErr
     assert!(len > 0);
     assert!(dest + (len as u32) <= FlashDevice::DEVICE_MAX_ADDRESS);
 
-    write_enable()?;
+    let mut outer_idx: usize = 0;
+    let mut curr_addr: u32 = dest;
+    let mut curr_len: usize = len;
 
-    // Program memeory (TODO: For loop for each 256 byte chunk)
-    let transaction = QspiTransaction {
-        iwidth: QspiWidth::SING,
-        awidth: QspiWidth::SING,
-        dwidth: QspiWidth::QUAD,
-        instruction: FlashDevice::CMD_FAST_PROGRAM,
-        address: Some(dest & FlashDevice::DEVICE_MAX_ADDRESS),
-        dummy: 0,
-        data_len: Some(len),
-    };
+    // Two constraints for each write operaton: Must be <= 256 bytes and not cross a page boundry
+    while curr_len > 0 {
+        write_enable()?;
 
-    polling_write(src, transaction)?;
+        let start_page = curr_addr - (curr_addr % FlashDevice::DEVICE_PAGE_SIZE);
+        let end_page = start_page + FlashDevice::DEVICE_PAGE_SIZE;
+        let size: usize = if curr_addr + (curr_len as u32) > end_page {
+            (end_page - curr_addr) as usize
+        } else {
+            curr_len
+        };
 
-    // Poll status
-    let mut status = 0;
-    while status & 0x80 == 0 {
-        status = match read_flag_status() {
-            Ok(status) => status,
-            Err(e) => return Err(e),
+        rprintln!("Writing {} bytes to address {:X} (outer_idx = {})", size, curr_addr, outer_idx);
+
+        // Program memeory
+        let transaction = QspiTransaction {
+            iwidth: QspiWidth::SING,
+            awidth: QspiWidth::SING,
+            dwidth: QspiWidth::QUAD,
+            instruction: FlashDevice::CMD_FAST_PROGRAM,
+            address: Some(curr_addr & FlashDevice::DEVICE_MAX_ADDRESS),
+            dummy: 0,
+            data_len: Some(size),
+        };
+
+        polling_write(src, transaction, outer_idx)?;
+
+        // Poll flag status
+        let mut status = 0;
+        while status & 0x80 == 0 {
+            status = match read_flag_status() {
+                Ok(status) => status,
+                Err(e) => return Err(e),
+            }
         }
+
+        curr_addr += size as u32;
+        curr_len -= size;
+        outer_idx += size;
     }
 
     Ok(())
 }
 
-/// Erase at least `len` bytes at `src` and return how many bytes were actually erased.
-pub fn memory_erase(src: u32, len: usize) -> Result<u32, QspiError> {
+/// Erase at least `len` bytes at `src` and return how many bytes were actually erased
+/// and what address they were erased at.
+pub fn memory_erase(src: u32, len: usize) -> Result<(u32, u32), QspiError> {
     assert!(len > 0);
     assert!(src + (len as u32) <= FlashDevice::DEVICE_MAX_ADDRESS);
 
@@ -192,6 +215,7 @@ pub fn memory_erase(src: u32, len: usize) -> Result<u32, QspiError> {
 
     let mut num_erased_bytes: u32 = 0;
     let mut addr: u32 = src - (src % FlashDevice::DEVICE_SUBSECTOR_SIZE);
+    let start_addr = addr;
     while num_erased_bytes < (len as u32) {
         let transaction = QspiTransaction {
             iwidth: QspiWidth::SING,
@@ -209,7 +233,7 @@ pub fn memory_erase(src: u32, len: usize) -> Result<u32, QspiError> {
         num_erased_bytes += FlashDevice::DEVICE_SUBSECTOR_SIZE;
         addr += FlashDevice::DEVICE_SUBSECTOR_SIZE;
 
-        // Poll status
+        // Poll flag status
         let mut status = 0;
         while status & 0x80 == 0 {
             status = match read_flag_status() {
@@ -219,7 +243,7 @@ pub fn memory_erase(src: u32, len: usize) -> Result<u32, QspiError> {
         }
     }
 
-    Ok(num_erased_bytes)
+    Ok((num_erased_bytes, start_addr))
 }
 
 /// Check the identification bytes of the flash device to validate communication.
@@ -260,7 +284,7 @@ fn write_enable() -> Result<(), QspiError> {
     };
 
     let mut dummy = [0];
-    polling_write(&mut dummy, transaction)
+    polling_write(&mut dummy, transaction, 0)
 }
 
 /// Read flag status register.
@@ -320,7 +344,11 @@ fn polling_read(buf: &mut [u8], transaction: QspiTransaction) -> Result<(), Qspi
 }
 
 /// Polling indirect write.
-fn polling_write(buf: &mut [u8], transaction: QspiTransaction) -> Result<(), QspiError> {
+fn polling_write(
+    buf: &mut [u8],
+    transaction: QspiTransaction,
+    start_idx: usize,
+) -> Result<(), QspiError> {
     let qspi_regs = unsafe { &(*QUADSPI::ptr()) };
 
     setup_transaction(QspiMode::INDIRECT_WRITE, &transaction);
@@ -338,7 +366,7 @@ fn polling_write(buf: &mut [u8], transaction: QspiTransaction) -> Result<(), Qsp
                     let mut word: u32 = 0;
                     let num_pack = if (len - idx) >= 4 { 4 } else { len - idx };
                     for i in 0..num_pack {
-                        word |= (buf[idx] as u32) << (i * 8);
+                        word |= (buf[start_idx + idx] as u32) << (i * 8);
                         idx += 1;
                     }
 
@@ -399,8 +427,8 @@ pub mod tests {
     use super::*;
 
     pub fn test_mem() {
-        const ADDR: u32 = 0x1000;
-        const LEN: usize = 16;
+        const ADDR: u32 = 0x10FC;
+        const LEN: usize = 8;
         let mut read_buffer: [u8; LEN] = [0; LEN];
         let mut write_buffer: [u8; LEN] = [0; LEN];
         for i in 0..LEN {
@@ -409,10 +437,15 @@ pub mod tests {
 
         // Test erase + write
         match memory_erase(ADDR, LEN) {
-            Ok(num) => {
-                assert!(LEN <= num as usize);
-                rprintln!("Successfully erased {} bytes at address {}", num, ADDR);
-            },
+            Ok(pair) => {
+                let (num_erase, addr_erase) = pair;
+                assert!(LEN <= num_erase as usize);
+                rprintln!(
+                    "Successfully erased {} bytes at address {:X}",
+                    num_erase,
+                    addr_erase
+                );
+            }
             Err(e) => panic!("Erase failed with error = {:?}", e),
         };
         memory_read(&mut read_buffer, ADDR, LEN).unwrap();
@@ -424,8 +457,14 @@ pub mod tests {
         memory_write(ADDR, &mut write_buffer, LEN).unwrap();
         memory_read(&mut read_buffer, ADDR, LEN).unwrap();
         for i in 0..LEN {
-            rprintln!("{}: write = {:X}, read = {:X}", i, write_buffer[i], read_buffer[i]);
-            // assert!(read_buffer[i] == write_buffer[i]);
+            if write_buffer[i] != read_buffer[i] {
+                panic!(
+                    "Error: Mismatch at address {:X}. Expected {:X} but read {:X}",
+                    ADDR + i as u32,
+                    write_buffer[i],
+                    read_buffer[i]
+                );
+            }
         }
     }
 }
