@@ -24,7 +24,7 @@ use stm32f7xx_hal::{
 const APP: () = {
     // Static resources.
     struct Resources {
-        nvm: nvm::NonVolatileMemory,
+        nvm: nvm::NonVolatileMemory<board::qspi::QspiDriver>,
         fb: frame_buf::FrameBuffer,
         button: board::ButtonPin,
         delay: Delay,
@@ -60,7 +60,7 @@ const APP: () = {
         );
 
         // Setup QSPI
-        board::qspi::init(
+        let mut qspi = board::qspi::QspiDriver::new(
             &mut rcc,
             pac_periph.GPIOB,
             pac_periph.GPIOD,
@@ -68,7 +68,9 @@ const APP: () = {
             pac_periph.QUADSPI,
         );
 
-        board::qspi::tests::test_mem();
+        qspi.check_id().unwrap();
+        board::qspi::tests::test_mem(&mut qspi);
+        rprintln!("QSPI driver successfully initialized!");
 
         // Clocking: Set HSE to reflect the board and ramp up SYSCLK to max possible speed
         let mut rcc = rcc.constrain();
@@ -84,7 +86,7 @@ const APP: () = {
         let (sdram_ptr, sdram_size) = board::sdram::init(&clocks, &mut delay);
 
         // NVM
-        let nvm = nvm::NonVolatileMemory::new();
+        let nvm = nvm::NonVolatileMemory::new(qspi);
 
         // OV9655
         ov9655::init(pac_periph.I2C1, &mut rcc.apb1, clocks, &mut delay);
@@ -136,10 +138,10 @@ const APP: () = {
     // Handle a button interrupt. At the moment this does a playback of frames in SDRAM.
     #[task(binds = EXTI15_10, priority = 2, resources = [nvm, fb, button, delay])]
     fn button_isr(cx: button_isr::Context) {
-        let nvm: &mut nvm::NonVolatileMemory = cx.resources.nvm;
-        let fb: &mut frame_buf::FrameBuffer = cx.resources.fb;
-        let button: &mut board::ButtonPin = cx.resources.button;
-        let delay: &mut Delay = cx.resources.delay;
+        let nvm = cx.resources.nvm;
+        let fb = cx.resources.fb;
+        let button = cx.resources.button;
+        let delay = cx.resources.delay;
 
         // Clear pending interrupt
         button.clear_interrupt_pending_bit();
