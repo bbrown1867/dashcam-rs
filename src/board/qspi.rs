@@ -1,7 +1,6 @@
 //! QSPI driver for the MT25QL128ABA located on the STM32F746G Discovery Board.
 
 use core::convert::TryInto;
-use rtt_target::rprintln;
 use stm32f7xx_hal::{
     gpio::{GpioExt, Speed},
     pac::{GPIOB, GPIOD, GPIOE, QUADSPI, RCC},
@@ -21,8 +20,8 @@ struct FlashDevice;
 
 impl FlashDevice {
     pub const CMD_READ_ID: u8 = 0x9F;
-    pub const CMD_FAST_READ: u8 = 0x6B;
-    pub const CMD_FAST_PROGRAM: u8 = 0x32;
+    pub const CMD_MEM_READ: u8 = 0x03;
+    pub const CMD_MEM_PROGRAM: u8 = 0x02;
     pub const CMD_SUBSECT_ERASE: u8 = 0x20;
     pub const CMD_READ_FLAG_STATUS: u8 = 0x70;
     pub const CMD_WRITE_ENABLE: u8 = 0x06;
@@ -142,10 +141,10 @@ pub fn memory_read(dest: &mut [u8], src: u32, len: usize) -> Result<(), QspiErro
     let transaction = QspiTransaction {
         iwidth: QspiWidth::SING,
         awidth: QspiWidth::SING,
-        dwidth: QspiWidth::QUAD,
-        instruction: FlashDevice::CMD_FAST_READ,
+        dwidth: QspiWidth::SING,
+        instruction: FlashDevice::CMD_MEM_READ,
         address: Some(src & FlashDevice::DEVICE_MAX_ADDRESS),
-        dummy: 10,
+        dummy: 0,
         data_len: Some(len),
     };
 
@@ -173,14 +172,12 @@ pub fn memory_write(dest: u32, src: &mut [u8], len: usize) -> Result<(), QspiErr
             curr_len
         };
 
-        rprintln!("Writing {} bytes to address {:X} (outer_idx = {})", size, curr_addr, outer_idx);
-
         // Program memeory
         let transaction = QspiTransaction {
             iwidth: QspiWidth::SING,
             awidth: QspiWidth::SING,
-            dwidth: QspiWidth::QUAD,
-            instruction: FlashDevice::CMD_FAST_PROGRAM,
+            dwidth: QspiWidth::SING,
+            instruction: FlashDevice::CMD_MEM_PROGRAM,
             address: Some(curr_addr & FlashDevice::DEVICE_MAX_ADDRESS),
             dummy: 0,
             data_len: Some(size),
@@ -211,12 +208,12 @@ pub fn memory_erase(src: u32, len: usize) -> Result<(u32, u32), QspiError> {
     assert!(len > 0);
     assert!(src + (len as u32) <= FlashDevice::DEVICE_MAX_ADDRESS);
 
-    write_enable()?;
-
     let mut num_erased_bytes: u32 = 0;
     let mut addr: u32 = src - (src % FlashDevice::DEVICE_SUBSECTOR_SIZE);
     let start_addr = addr;
     while num_erased_bytes < (len as u32) {
+        write_enable()?;
+
         let transaction = QspiTransaction {
             iwidth: QspiWidth::SING,
             awidth: QspiWidth::SING,
@@ -398,7 +395,7 @@ fn setup_transaction(fmode: u8, transaction: &QspiTransaction) {
             None => (),
         };
 
-        // Note: This part always has 24-bit addressing (0x00FF_FFFF is max address)
+        // Note: This part always has 24-bit addressing (adsize)
         qspi_regs.ccr.write(|w| {
             w.fmode()
                 .bits(fmode)
@@ -410,6 +407,8 @@ fn setup_transaction(fmode: u8, transaction: &QspiTransaction) {
                 .bits(transaction.dwidth)
                 .adsize()
                 .bits(0b10)
+                .abmode()
+                .bits(QspiWidth::NONE)
                 .dcyc()
                 .bits(transaction.dummy)
                 .instruction()
@@ -423,28 +422,31 @@ fn setup_transaction(fmode: u8, transaction: &QspiTransaction) {
     }
 }
 
+/// Tests for the QSPI flash driver.
 pub mod tests {
     use super::*;
 
+    /// Simple loopback memory test for the QSPI flash driver. Performs two checks:
+    /// - Erase/read: After erasing, all bytes in the region [ADDR:ADDR+LEN) should be 0xFF.
+    /// - Write/read: After writing, all bytes in the region [ADDR:ADDR+LEN) should match the
+    ///   values written.
+    ///
+    /// The test addr is an odd, non page aligned address to stress the `memory_write` function.
+    /// The test length is greater than one subsector to stress the `memory_erase` function.
     pub fn test_mem() {
-        const ADDR: u32 = 0x10FC;
-        const LEN: usize = 8;
+        const ADDR: u32 = 0x7003;
+        const LEN: usize = 4121;
         let mut read_buffer: [u8; LEN] = [0; LEN];
         let mut write_buffer: [u8; LEN] = [0; LEN];
         for i in 0..LEN {
             write_buffer[i] = i as u8;
         }
 
-        // Test erase + write
         match memory_erase(ADDR, LEN) {
             Ok(pair) => {
                 let (num_erase, addr_erase) = pair;
                 assert!(LEN <= num_erase as usize);
-                rprintln!(
-                    "Successfully erased {} bytes at address {:X}",
-                    num_erase,
-                    addr_erase
-                );
+                assert!(addr_erase <= ADDR);
             }
             Err(e) => panic!("Erase failed with error = {:?}", e),
         };
@@ -453,7 +455,6 @@ pub mod tests {
             assert!(read_buffer[i] == 0xFF);
         }
 
-        // Test write + read
         memory_write(ADDR, &mut write_buffer, LEN).unwrap();
         memory_read(&mut read_buffer, ADDR, LEN).unwrap();
         for i in 0..LEN {
