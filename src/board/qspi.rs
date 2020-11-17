@@ -7,7 +7,9 @@ use stm32f7xx_hal::{
     pac::{GPIOB, GPIOD, GPIOE, QUADSPI, RCC},
 };
 
+/// Handle for the QSPI driver.
 pub struct QspiDriver {
+    /// QSPI peripheral registers.
     qspi: QUADSPI,
 }
 
@@ -27,6 +29,7 @@ impl FlashDevice {
     pub const CMD_READ_ID: u8 = 0x9F;
     pub const CMD_MEM_READ: u8 = 0x03;
     pub const CMD_MEM_PROGRAM: u8 = 0x02;
+    pub const CMD_BULK_ERASE: u8 = 0x67;
     pub const CMD_SUBSECT_ERASE: u8 = 0x20;
     pub const CMD_READ_FLAG_STATUS: u8 = 0x70;
     pub const CMD_WRITE_ENABLE: u8 = 0x06;
@@ -162,6 +165,49 @@ impl QspiDriver {
         } else {
             Ok(())
         }
+    }
+
+    /// Erase `len` bytes at address `src` sector-by-sector. If `src` is not sector aligned, the
+    /// start of sector it resides in will be the starting address for the erase. A pair is
+    /// returned containing the total number of bytes erased and the erase starting address.
+    pub fn sector_erase(&mut self, src: u32, len: usize) -> Result<(u32, u32), QspiError> {
+        assert!(len > 0);
+        assert!(src + (len as u32) <= FlashDevice::DEVICE_MAX_ADDRESS);
+
+        let mut num_erased_bytes: u32 = 0;
+        let mut addr: u32 = src - (src % FlashDevice::DEVICE_SUBSECTOR_SIZE);
+        let start_addr = addr;
+
+        // The smallest possible erase is a subsector (4KB)
+        while num_erased_bytes < (len as u32) {
+            self.write_enable()?;
+
+            let transaction = QspiTransaction {
+                iwidth: QspiWidth::SING,
+                awidth: QspiWidth::SING,
+                dwidth: QspiWidth::NONE,
+                instruction: FlashDevice::CMD_SUBSECT_ERASE,
+                address: Some(addr & FlashDevice::DEVICE_MAX_ADDRESS),
+                dummy: 0,
+                data_len: None,
+            };
+
+            let mut dummy = [0];
+            self.polling_read(&mut dummy, transaction)?;
+
+            num_erased_bytes += FlashDevice::DEVICE_SUBSECTOR_SIZE;
+            addr += FlashDevice::DEVICE_SUBSECTOR_SIZE;
+
+            let mut status = 0;
+            while status & 0x80 == 0 {
+                status = match self.read_flag_status() {
+                    Ok(status) => status,
+                    Err(e) => return Err(e),
+                }
+            }
+        }
+
+        Ok((num_erased_bytes, start_addr))
     }
 
     /// Write enable.
@@ -390,44 +436,31 @@ impl Mem for QspiDriver {
     }
 
     /// Blocking erase implementation for QSPI flash.
-    fn erase(&mut self, src: u32, len: usize) -> Result<(u32, u32), QspiError> {
-        assert!(len > 0);
-        assert!(src + (len as u32) <= FlashDevice::DEVICE_MAX_ADDRESS);
+    fn erase(&mut self) -> Result<(), QspiError> {
+        self.write_enable()?;
 
-        let mut num_erased_bytes: u32 = 0;
-        let mut addr: u32 = src - (src % FlashDevice::DEVICE_SUBSECTOR_SIZE);
-        let start_addr = addr;
+        let transaction = QspiTransaction {
+            iwidth: QspiWidth::SING,
+            awidth: QspiWidth::NONE,
+            dwidth: QspiWidth::NONE,
+            instruction: FlashDevice::CMD_BULK_ERASE,
+            address: None,
+            dummy: 0,
+            data_len: None,
+        };
 
-        // The smallest possible erase is a subsector (4KB)
-        while num_erased_bytes < (len as u32) {
-            self.write_enable()?;
+        let mut dummy = [0];
+        self.polling_read(&mut dummy, transaction)?;
 
-            let transaction = QspiTransaction {
-                iwidth: QspiWidth::SING,
-                awidth: QspiWidth::SING,
-                dwidth: QspiWidth::NONE,
-                instruction: FlashDevice::CMD_SUBSECT_ERASE,
-                address: Some(addr & FlashDevice::DEVICE_MAX_ADDRESS),
-                dummy: 0,
-                data_len: None,
-            };
-
-            let mut dummy = [0];
-            self.polling_read(&mut dummy, transaction)?;
-
-            num_erased_bytes += FlashDevice::DEVICE_SUBSECTOR_SIZE;
-            addr += FlashDevice::DEVICE_SUBSECTOR_SIZE;
-
-            let mut status = 0;
-            while status & 0x80 == 0 {
-                status = match self.read_flag_status() {
-                    Ok(status) => status,
-                    Err(e) => return Err(e),
-                }
+        let mut status = 0;
+        while status & 0x80 == 0 {
+            status = match self.read_flag_status() {
+                Ok(status) => status,
+                Err(e) => return Err(e),
             }
         }
 
-        Ok((num_erased_bytes, start_addr))
+        Ok(())
     }
 }
 
@@ -451,7 +484,7 @@ pub mod tests {
             write_buffer[i] = i as u8;
         }
 
-        match dut.erase(ADDR, LEN) {
+        match dut.sector_erase(ADDR, LEN) {
             Ok(pair) => {
                 let (num_erase, addr_erase) = pair;
                 assert!(LEN <= num_erase as usize);

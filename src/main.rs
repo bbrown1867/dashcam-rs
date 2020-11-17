@@ -86,7 +86,8 @@ const APP: () = {
         let (sdram_ptr, sdram_size) = board::sdram::init(&clocks, &mut delay);
 
         // NVM
-        let nvm = nvm::NonVolatileMemory::new(qspi);
+        let nvm = nvm::NonVolatileMemory::new(qspi, 0);
+        rprintln!("NVM driver successfully initialized and erased!");
 
         // OV9655
         ov9655::init(pac_periph.I2C1, &mut rcc.apb1, clocks, &mut delay);
@@ -150,9 +151,10 @@ const APP: () = {
         ov9655::stop();
 
         // Write frames to non-volatile memory
+        rprintln!("Saving frames to non-volatile memory! This may take awhile...");
         let curr_fb = fb.clone();
         for address in curr_fb {
-            nvm.write(address, FRAME_SIZE);
+            nvm.write(address, FRAME_SIZE as usize).unwrap();
         }
 
         // Now cycle through the frames in the buffer and display them
