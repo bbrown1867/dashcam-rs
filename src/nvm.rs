@@ -20,8 +20,10 @@ pub trait Mem {
 pub struct NonVolatileMemory<MEM> {
     /// Memory device handle.
     device: MEM,
-    /// Write pointer.
+    /// Write pointer (NVM address).
     write_ptr: u32,
+    /// Read pointer (NVM address).
+    read_ptr: u32,
 }
 
 impl<MEM, E> NonVolatileMemory<MEM>
@@ -35,14 +37,27 @@ where
         NonVolatileMemory {
             device,
             write_ptr: start_addr,
+            read_ptr: start_addr,
         }
     }
 
-    /// Save `size` bytes located in RAM at `src_address` to non-volatile memory.
+    pub fn get_write_ptr(&mut self) -> u32 {
+        self.write_ptr
+    }
+
+    /// Write `size` bytes located in RAM at `src_address` to non-volatile memory.
     pub fn write(&mut self, src_address: u32, size: usize) -> Result<(), E> {
         let src_buf: &mut [u8] = unsafe { from_raw_parts_mut(src_address as *mut u8, size) };
         self.device.write(self.write_ptr, src_buf, size)?;
         self.write_ptr += size as u32;
+        Ok(())
+    }
+
+    /// Read `size` bytes located in non-volatile memory to SDRAM at `dst_address`.
+    pub fn read(&mut self, dst_address: u32, size: usize) -> Result<(), E> {
+        let dst_buf: &mut [u8] = unsafe { from_raw_parts_mut(dst_address as *mut u8, size) };
+        self.device.read(dst_buf, self.read_ptr, size)?;
+        self.read_ptr += size as u32;
         Ok(())
     }
 }
