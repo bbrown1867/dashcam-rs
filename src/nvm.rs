@@ -1,5 +1,7 @@
 //! Abstraction layer for write frames to non-volatile memory.
 
+use core::{fmt, slice::from_raw_parts_mut};
+
 /// Any memory device that implements these traits will be compatible with the NVM driver.
 pub trait Mem {
     type Error;
@@ -10,35 +12,37 @@ pub trait Mem {
     /// Write `len` bytes in `src` to NVM device `dest` address.
     fn write(&mut self, dest: u32, src: &mut [u8], len: usize) -> Result<(), Self::Error>;
 
-    /// Erase at least `len` bytes at `src`. Return a pair containing (num bytes erased, starting
-    /// address for erase). These may differ from input arguments due to NVM device limitations.
-    fn erase(&mut self, src: u32, len: usize) -> Result<(u32, u32), Self::Error>;
+    /// Erase the NVM device, such that any section of it can be written.
+    fn erase(&mut self) -> Result<(), Self::Error>;
 }
 
 /// Handle for the NVM driver.
 pub struct NonVolatileMemory<MEM> {
-    _device: MEM,
+    /// Memory device handle.
+    device: MEM,
+    /// Write pointer.
     write_ptr: u32,
 }
 
 impl<MEM, E> NonVolatileMemory<MEM>
 where
     MEM: Mem<Error = E>,
+    E: fmt::Debug,
 {
-    pub fn new(device: MEM) -> Self {
+    /// Initialize the NVM driver.
+    pub fn new(mut device: MEM, start_addr: u32) -> Self {
+        device.erase().expect("Could not erase NVM device!");
         NonVolatileMemory {
-            _device: device,
-            write_ptr: 0,
+            device,
+            write_ptr: start_addr,
         }
     }
 
-    pub fn write(&mut self, _src_address: u32, size: u32) {
-        // Erase non-volatile memory
-
-        // Write to pointer...
-
-        // Readback to verify?
-
-        self.write_ptr += size;
+    /// Save `size` bytes located in RAM at `src_address` to non-volatile memory.
+    pub fn write(&mut self, src_address: u32, size: usize) -> Result<(), E> {
+        let src_buf: &mut [u8] = unsafe { from_raw_parts_mut(src_address as *mut u8, size) };
+        self.device.write(self.write_ptr, src_buf, size)?;
+        self.write_ptr += size as u32;
+        Ok(())
     }
 }
