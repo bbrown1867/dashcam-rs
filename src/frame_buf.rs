@@ -37,17 +37,19 @@ impl FrameBuffer {
     }
 
     /// Update frame buffer, `self.num_caps` completed and `self.num_caps + 1` is now underway.
-    /// Return the current address.
-    pub fn update(&mut self) -> u32 {
+    /// Return the current address. Set `reg_update` to false to skip DMA register updates.
+    pub fn update(&mut self, reg_update: bool) -> u32 {
         // Get current and next addresses
         let curr_addr = self.get_addr(self.num_caps);
         let next_addr = self.get_addr(self.num_caps + 2);
 
         // Replace the address in `self.num_caps` with `self.num_caps + 2`
-        match self.num_caps % 2 {
-            0 => crate::ov9655::update_addr0(next_addr),
-            _ => crate::ov9655::update_addr1(next_addr),
-        };
+        if reg_update {
+            match self.num_caps % 2 {
+                0 => crate::ov9655::update_addr0(next_addr),
+                _ => crate::ov9655::update_addr1(next_addr),
+            };
+        }
 
         // Update and return current address
         self.num_caps += 1;
