@@ -223,7 +223,7 @@ impl QspiDriver {
         };
 
         let mut dummy = [0];
-        self.polling_write(&mut dummy, transaction, 0)
+        self.polling_read(&mut dummy, transaction)
     }
 
     /// Read flag status register.
@@ -244,7 +244,7 @@ impl QspiDriver {
         Ok(status[0])
     }
 
-    /// Polling indirect read.
+    /// Polling indirect read. Can also be used to perform transactions with no data.
     fn polling_read(
         &mut self,
         buf: &mut [u8],
