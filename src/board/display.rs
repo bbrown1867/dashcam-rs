@@ -98,7 +98,7 @@ pub fn config() -> screen::DiscoDisplay<u16> {
 }
 
 /// Color the screen blue and display the welcome message.
-pub fn draw_welcome(display: &mut screen::DiscoDisplay<u16>) {
+pub fn draw_message(display: &mut screen::DiscoDisplay<u16>, msg: &str) {
     egrectangle!(
         top_left = (0, 0),
         bottom_right = (479, 271),
@@ -108,8 +108,8 @@ pub fn draw_welcome(display: &mut screen::DiscoDisplay<u16>) {
     .ok();
 
     egtext!(
-        text = "Hello Dashcam!",
-        top_left = (100, 100),
+        text = msg,
+        top_left = (105, 105),
         style = text_style!(font = Font6x8, text_color = RgbColor::WHITE)
     )
     .draw(display)

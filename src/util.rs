@@ -3,7 +3,7 @@
 use core::panic::PanicInfo;
 use rtt_target::rprintln;
 
-/// Sets `size` bytes located at `addr` to `val`.
+/// Sets `size` items of type T located at `addr` to `val`.
 #[allow(dead_code)]
 pub fn memory_set<T: Copy>(addr: u32, size: usize, val: T) {
     for i in 0..size {
