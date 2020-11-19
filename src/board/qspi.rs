@@ -1,10 +1,10 @@
 //! QSPI driver for the MT25QL128ABA located on the STM32F746G Discovery Board.
-
+use rtt_target::rprintln;
 use crate::nvm::Mem;
 use core::convert::TryInto;
 use stm32f7xx_hal::{
     gpio::{GpioExt, Speed},
-    pac::{GPIOB, GPIOD, GPIOE, QUADSPI, RCC},
+    pac::{DMA2, GPIOB, GPIOD, GPIOE, QUADSPI, RCC},
 };
 
 /// Handle for the QSPI driver.
@@ -34,6 +34,8 @@ pub enum QspiError {
     StatusTimeout,
     /// Invalid `QspiDriverMode` used in function.
     BadDriverMode,
+    /// Error during DMA transfer.
+    DmaError,
 }
 
 /// Commands and other information specific to the MT25Q.
@@ -88,6 +90,11 @@ impl QspiWidth {
     pub const QUAD: u8 = 0b11;
 }
 
+// DMA2-Stream 7-Channel 3 is used to interface with QUADSPI
+const DMA_STREAM: usize = 7;
+const DMA_CHANNEL: u8 = 3;
+const QUADSPI_DR_ADDR: u32 = 0x9000_0000 + 0x20;
+
 impl QspiDriver {
     /// Initialize and configure the QSPI flash driver.
     pub fn new(rcc: &mut RCC, gpiob: GPIOB, gpiod: GPIOD, gpioe: GPIOE, qspi: QUADSPI) -> Self {
@@ -137,7 +144,9 @@ impl QspiDriver {
 
         // Configure QSPI
         unsafe {
-            // Single flash mode with a QSPI clock prescaler of 2 (216 / 2 = 108 MHz)
+            // Single flash mode with a QSPI clock prescaler of 2 (216 / 2 = 108 MHz), FIFO
+            // threshold is left at 1 for simplicity, but the driver could be optimized to set it
+            // to the greatest divisor of the transfer length between 1 and 32.
             qspi.cr.modify(|_, w| {
                 w.prescaler()
                     .bits(1)
@@ -194,7 +203,6 @@ impl QspiDriver {
             address: Some(src & FlashDevice::DEVICE_MAX_ADDRESS),
             dummy: 0,
             data_len: Some(len),
-            // TODO: DMA flag?
         };
 
         match dst {
@@ -233,7 +241,6 @@ impl QspiDriver {
                 address: Some(curr_addr & FlashDevice::DEVICE_MAX_ADDRESS),
                 dummy: 0,
                 data_len: Some(size),
-                // TODO: DMA flag?
             };
 
             match src {
@@ -353,6 +360,7 @@ impl QspiDriver {
         transaction: QspiTransaction,
     ) -> Result<(), QspiError> {
         self.setup_transaction(QspiMode::INDIRECT_READ, &transaction);
+        self.qspi.cr.modify(|_, w| w.dmaen().clear_bit());
 
         match transaction.data_len {
             Some(len) => {
@@ -394,6 +402,7 @@ impl QspiDriver {
         start_idx: usize,
     ) -> Result<(), QspiError> {
         self.setup_transaction(QspiMode::INDIRECT_WRITE, &transaction);
+        self.qspi.cr.modify(|_, w| w.dmaen().clear_bit());
 
         match transaction.data_len {
             Some(len) => {
@@ -430,26 +439,68 @@ impl QspiDriver {
         Ok(())
     }
 
-    /// DMA indirect read.
+    /// DMA indirect read. DMA controller is setup first, then the QSPI peripheral is setup, such
+    /// that the peripheral does not start clocking data in too soon.
     fn dma_read(
         &mut self,
-        _dst_address: u32,
+        dst_address: u32,
         transaction: QspiTransaction,
     ) -> Result<(), QspiError> {
-        self.setup_transaction(QspiMode::INDIRECT_READ, &transaction);
-        // TODO
-        Ok(())
+        // Check constraints on current DMA implementation
+        match transaction.data_len {
+            Some(data_len) => {
+                let num_bytes: u32 = data_len as u32;
+                assert!(num_bytes % 4 == 0, "Error: Transfer must be word aligned.");
+                assert!(
+                    num_bytes / 4 <= 65535,
+                    "Error: Transfer too large for one shot DMA."
+                );
+
+                // Configure DMA
+                let num_words: u16 = (num_bytes / 4).try_into().unwrap();
+                self.qspi.cr.modify(|_, w| w.dmaen().set_bit());
+                qspi_dma_setup(dst_address, num_words, true);
+
+                // Configure QSPI
+                self.setup_transaction(QspiMode::INDIRECT_READ, &transaction);
+
+                // Wait for DMA transfer to complete
+                qspi_dma_is_done()
+            }
+            None => Err(QspiError::BadDriverMode),
+        }
     }
 
-    /// DMA indirect write.
+    /// DMA indirect write. QSPI peripheral is setup first, then the DMA controller is setup,
+    /// such that the peripheral is ready to receive data when DMA starts.
     fn dma_write(
         &mut self,
-        _src_address: u32,
+        src_address: u32,
         transaction: QspiTransaction,
     ) -> Result<(), QspiError> {
-        self.setup_transaction(QspiMode::INDIRECT_WRITE, &transaction);
-        // TODO
-        Ok(())
+        match transaction.data_len {
+            Some(data_len) => {
+                // Check constraints on current DMA implementation
+                let num_bytes: u32 = data_len as u32;
+                assert!(num_bytes % 4 == 0, "Error: Transfer must be word aligned.");
+                assert!(
+                    num_bytes / 4 <= 65535,
+                    "Error: Transfer too large for one shot DMA."
+                );
+
+                // Configure QSPI
+                self.setup_transaction(QspiMode::INDIRECT_WRITE, &transaction);
+
+                // Configure DMA
+                let num_words: u16 = (num_bytes / 4).try_into().unwrap();
+                self.qspi.cr.modify(|_, w| w.dmaen().set_bit());
+                qspi_dma_setup(src_address, num_words, false);
+
+                // Wait for DMA transfer to complete
+                qspi_dma_is_done()
+            }
+            None => Err(QspiError::BadDriverMode),
+        }
     }
 
     /// Map from QspiTransaction to QSPI registers.
@@ -522,6 +573,120 @@ impl Mem for QspiDriver {
     }
 }
 
+/// Handle setup of the DMA controller. Set `dir` to `true` for qspi -> memory and `false` for
+/// memory -> qspi.
+fn qspi_dma_setup(address: u32, num_words: u16, dir: bool) {
+    let dma2_regs = unsafe { &(*DMA2::ptr()) };
+    let rcc_regs = unsafe { &(*RCC::ptr()) };
+
+    rprintln!("Setting up DMA for address {:X} num words {}, dir = {}", address, num_words, dir);
+
+    // Enable peripheral clock
+    rcc_regs.ahb1enr.modify(|_, w| w.dma2en().set_bit());
+
+    unsafe {
+        // Clear any stale interrupts
+        let dma2_int_status_lo = dma2_regs.lisr.read().bits();
+        let dma2_int_status_hi = dma2_regs.hisr.read().bits();
+        dma2_regs.lifcr.write(|w| w.bits(dma2_int_status_lo));
+        dma2_regs.hifcr.write(|w| w.bits(dma2_int_status_hi));
+
+        // Configure DMA, fields set to 0 are omitted
+        dma2_regs.st[DMA_STREAM].cr.write_with_zero(|w| {
+            w
+                // TODO: Flow controller (0 = DMA, 1 = peripheral)
+                .pfctrl()
+                .set_bit()
+                // Memory address increment
+                .minc()
+                .set_bit()
+                // Peripheral transfer size
+                .psize()
+                .bits32()
+                // Memory transfer size
+                .msize()
+                .bits32()
+                // Priority level
+                .pl()
+                .high()
+                // Peripheral burst
+                .pburst()
+                .single()
+                // Memory burst
+                .mburst()
+                .single()
+                // Channel
+                .chsel()
+                .bits(DMA_CHANNEL)
+        });
+    }
+
+    dma2_regs.st[DMA_STREAM].cr.modify(|_, w| match dir {
+        true => w.dir().peripheral_to_memory(),
+        false => w.dir().memory_to_peripheral(),
+    });
+
+    // Setup transfer size and addresses
+    dma2_regs.st[DMA_STREAM]
+        .ndtr
+        .write(|w| w.ndt().bits(num_words));
+
+    dma2_regs.st[DMA_STREAM]
+        .par
+        .write(|w| w.pa().bits(QUADSPI_DR_ADDR));
+
+    dma2_regs.st[DMA_STREAM]
+        .m0ar
+        .write(|w| w.m0a().bits(address));
+
+    // Enable DMA
+    dma2_regs.st[DMA_STREAM].cr.modify(|_, w| w.en().set_bit());
+}
+
+/// Block until DMA transfer is complete. Disable the DMA controller after the transfer finishes.
+/// Possible improvements:
+/// - Implement a timeout, although difficult to do without knowing transfer size.
+/// - Use interrupt handler to allow processor to sleep while waiting with WFI.
+fn qspi_dma_is_done() -> Result<(), QspiError> {
+    // Wait for transfer complete
+    let mut error: bool = false;
+    let dma2_regs = unsafe { &(*DMA2::ptr()) };
+    loop {
+        if dma2_regs.hisr.read().tcif7().is_complete() {
+            break;
+        } else if dma2_regs.hisr.read().teif7().is_error() {
+            error = true;
+            break;
+        } else if dma2_regs.hisr.read().dmeif7().is_error() {
+            error = true;
+            break;
+        }
+    }
+
+    // TODO: Debug, remove later
+    let qspi_regs = unsafe { &(*QUADSPI::ptr()) };
+    rprintln!("    LISR = {:X}", dma2_regs.lisr.read().bits());
+    rprintln!("    HISR = {:X}", dma2_regs.hisr.read().bits());
+    rprintln!("    QSPISR = {:X}", qspi_regs.sr.read().bits());
+
+    // Clear status flags
+    unsafe {
+        let dma2_int_status_hi = dma2_regs.hisr.read().bits();
+        dma2_regs.hifcr.write(|w| w.bits(dma2_int_status_hi));
+    }
+
+    // Disable DMA
+    dma2_regs.st[DMA_STREAM]
+        .cr
+        .modify(|_, w| w.en().clear_bit());
+
+    if error {
+        Err(QspiError::DmaError)
+    } else {
+        Ok(())
+    }
+}
+
 /// Tests for the QSPI flash driver.
 pub mod tests {
     use super::*;
@@ -560,6 +725,59 @@ pub mod tests {
             .unwrap();
         dut.read(QspiDriverMode::PollingRead(&mut read_buffer), ADDR, LEN)
             .unwrap();
+        for i in 0..LEN {
+            if write_buffer[i] != read_buffer[i] {
+                panic!(
+                    "Error: Mismatch at address {:X}. Expected {:X} but read {:X}",
+                    ADDR + i as u32,
+                    write_buffer[i],
+                    read_buffer[i]
+                );
+            }
+        }
+    }
+
+    /// Same idea as `test_mem` but using DMA. Note that transfer size must be 4 byte aligned for
+    /// the way the DMA functionality was implemented in software.
+    pub fn test_mem_dma(dut: &mut QspiDriver) {
+        const ADDR: u32 = 0x7000;
+        const LEN: usize = 4096;
+        let read_buffer: [u8; LEN] = [0; LEN];
+        let mut write_buffer: [u8; LEN] = [0; LEN];
+        for i in 0..LEN {
+            write_buffer[i] = i as u8;
+        }
+
+        match dut.erase(ADDR, LEN) {
+            Ok(pair) => {
+                let (num_erase, addr_erase) = pair;
+                assert!(LEN <= num_erase as usize);
+                assert!(addr_erase <= ADDR);
+            }
+            Err(e) => panic!("Erase failed with error = {:?}", e),
+        };
+        dut.read(
+            QspiDriverMode::DmaMode(read_buffer.as_ptr() as u32),
+            ADDR,
+            LEN,
+        )
+        .unwrap();
+        for i in 0..LEN {
+            assert!(read_buffer[i] == 0xFF);
+        }
+
+        dut.write(
+            ADDR,
+            QspiDriverMode::DmaMode(write_buffer.as_ptr() as u32),
+            LEN,
+        )
+        .unwrap();
+        dut.read(
+            QspiDriverMode::DmaMode(read_buffer.as_ptr() as u32),
+            ADDR,
+            LEN,
+        )
+        .unwrap();
         for i in 0..LEN {
             if write_buffer[i] != read_buffer[i] {
                 panic!(
