@@ -2,6 +2,7 @@
 //! * Note: The OV9655 is not part of this module and has a seperate module.
 
 pub mod display;
+pub mod qspi;
 pub mod sdram;
 
 use stm32f7xx_hal::{
