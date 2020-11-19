@@ -20,6 +20,8 @@ pub enum QspiError {
     ReadDeviceId,
     /// Timeout during a polling transaction.
     Timeout,
+    /// Timeout waiting for a write/erase to complete.
+    StatusTimeout,
 }
 
 /// Commands and other information specific to the MT25Q.
@@ -29,7 +31,7 @@ impl FlashDevice {
     pub const CMD_READ_ID: u8 = 0x9F;
     pub const CMD_MEM_READ: u8 = 0x03;
     pub const CMD_MEM_PROGRAM: u8 = 0x02;
-    pub const CMD_BULK_ERASE: u8 = 0x67;
+    pub const CMD_BULK_ERASE: u8 = 0xC7;
     pub const CMD_SUBSECT_ERASE: u8 = 0x20;
     pub const CMD_READ_FLAG_STATUS: u8 = 0x70;
     pub const CMD_WRITE_ENABLE: u8 = 0x06;
@@ -198,16 +200,29 @@ impl QspiDriver {
             num_erased_bytes += FlashDevice::DEVICE_SUBSECTOR_SIZE;
             addr += FlashDevice::DEVICE_SUBSECTOR_SIZE;
 
-            let mut status = 0;
-            while status & 0x80 == 0 {
-                status = match self.read_flag_status() {
-                    Ok(status) => status,
-                    Err(e) => return Err(e),
-                }
-            }
+            self.poll_status(10000)?;
         }
 
         Ok((num_erased_bytes, start_addr))
+    }
+
+    /// Poll the status register until not busy. Necessary after write/erase operations.
+    fn poll_status(&mut self, timeout: u32) -> Result<(), QspiError> {
+        let mut cnt = 0;
+        let mut status = 0;
+        while status & 0x80 == 0 {
+            status = match self.read_flag_status() {
+                Ok(status) => status,
+                Err(e) => return Err(e),
+            };
+
+            cnt += 1;
+            if cnt == timeout {
+                return Err(QspiError::StatusTimeout);
+            }
+        }
+
+        Ok(())
     }
 
     /// Write enable.
@@ -419,13 +434,7 @@ impl Mem for QspiDriver {
 
             self.polling_write(src, transaction, outer_idx)?;
 
-            let mut status = 0;
-            while status & 0x80 == 0 {
-                status = match self.read_flag_status() {
-                    Ok(status) => status,
-                    Err(e) => return Err(e),
-                }
-            }
+            self.poll_status(10000)?;
 
             curr_addr += size as u32;
             curr_len -= size;
@@ -435,7 +444,7 @@ impl Mem for QspiDriver {
         Ok(())
     }
 
-    /// Blocking erase implementation for QSPI flash.
+    /// Blocking erase implementation for QSPI flash. This takes several seconds.
     fn erase(&mut self) -> Result<(), QspiError> {
         self.write_enable()?;
 
@@ -451,16 +460,7 @@ impl Mem for QspiDriver {
 
         let mut dummy = [0];
         self.polling_read(&mut dummy, transaction)?;
-
-        let mut status = 0;
-        while status & 0x80 == 0 {
-            status = match self.read_flag_status() {
-                Ok(status) => status,
-                Err(e) => return Err(e),
-            }
-        }
-
-        Ok(())
+        self.poll_status(1000000)
     }
 }
 
