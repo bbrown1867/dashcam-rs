@@ -13,6 +13,16 @@ pub struct QspiDriver {
     qspi: QUADSPI,
 }
 
+/// QSPI driver mode  of operation: DMA or polling.
+pub enum QspiDriverMode<'a> {
+    /// DMA mode: Provide an address.
+    DmaMode(u32),
+    /// Polling read: Provide mutable a buffer.
+    PollingRead(&'a mut [u8]),
+    /// Polling write: Provide a buffer.
+    PollingWrite(&'a [u8]),
+}
+
 /// QSPI errors.
 #[derive(Debug, Eq, PartialEq)]
 pub enum QspiError {
@@ -22,6 +32,8 @@ pub enum QspiError {
     Timeout,
     /// Timeout waiting for a write/erase to complete.
     StatusTimeout,
+    /// Invalid `QspiDriverMode` used in function.
+    BadDriverMode,
 }
 
 /// Commands and other information specific to the MT25Q.
@@ -169,10 +181,85 @@ impl QspiDriver {
         }
     }
 
+    /// Blocking read implementation for QSPI flash, using polling or DMA depending on `dst`.
+    pub fn read(&mut self, dst: QspiDriverMode, src: u32, len: usize) -> Result<(), QspiError> {
+        assert!(len > 0);
+        assert!(src + (len as u32) <= FlashDevice::DEVICE_MAX_ADDRESS);
+
+        let transaction = QspiTransaction {
+            iwidth: QspiWidth::SING,
+            awidth: QspiWidth::SING,
+            dwidth: QspiWidth::SING,
+            instruction: FlashDevice::CMD_MEM_READ,
+            address: Some(src & FlashDevice::DEVICE_MAX_ADDRESS),
+            dummy: 0,
+            data_len: Some(len),
+            // TODO: DMA flag?
+        };
+
+        match dst {
+            QspiDriverMode::DmaMode(addr) => self.dma_read(addr, transaction),
+            QspiDriverMode::PollingRead(buf) => self.polling_read(buf, transaction),
+            QspiDriverMode::PollingWrite(_) => return Err(QspiError::BadDriverMode),
+        }
+    }
+
+    /// Blocking write implementation for QSPI flash, using polling or DMA depending on `src`.
+    pub fn write(&mut self, dst: u32, src: QspiDriverMode, len: usize) -> Result<(), QspiError> {
+        assert!(len > 0);
+        assert!(dst + (len as u32) <= FlashDevice::DEVICE_MAX_ADDRESS);
+
+        let mut outer_idx: usize = 0;
+        let mut curr_addr: u32 = dst;
+        let mut curr_len: usize = len;
+
+        // Constraints for writes: (1) Must be <= 256 bytes, (2) must not cross a page boundry
+        while curr_len > 0 {
+            self.write_enable()?;
+
+            let start_page = curr_addr - (curr_addr % FlashDevice::DEVICE_PAGE_SIZE);
+            let end_page = start_page + FlashDevice::DEVICE_PAGE_SIZE;
+            let size: usize = if curr_addr + (curr_len as u32) > end_page {
+                (end_page - curr_addr) as usize
+            } else {
+                curr_len
+            };
+
+            let transaction = QspiTransaction {
+                iwidth: QspiWidth::SING,
+                awidth: QspiWidth::SING,
+                dwidth: QspiWidth::SING,
+                instruction: FlashDevice::CMD_MEM_PROGRAM,
+                address: Some(curr_addr & FlashDevice::DEVICE_MAX_ADDRESS),
+                dummy: 0,
+                data_len: Some(size),
+                // TODO: DMA flag?
+            };
+
+            match src {
+                QspiDriverMode::DmaMode(addr) => {
+                    self.dma_write(addr + outer_idx as u32, transaction)?
+                }
+                QspiDriverMode::PollingRead(_) => return Err(QspiError::BadDriverMode),
+                QspiDriverMode::PollingWrite(buf) => {
+                    self.polling_write(buf, transaction, outer_idx)?
+                }
+            };
+
+            self.poll_status(10000)?;
+
+            curr_addr += size as u32;
+            curr_len -= size;
+            outer_idx += size;
+        }
+
+        Ok(())
+    }
+
     /// Erase `len` bytes at address `src` sector-by-sector. If `src` is not sector aligned, the
     /// start of sector it resides in will be the starting address for the erase. A pair is
     /// returned containing the total number of bytes erased and the erase starting address.
-    pub fn sector_erase(&mut self, src: u32, len: usize) -> Result<(u32, u32), QspiError> {
+    pub fn erase(&mut self, src: u32, len: usize) -> Result<(u32, u32), QspiError> {
         assert!(len > 0);
         assert!(src + (len as u32) <= FlashDevice::DEVICE_MAX_ADDRESS);
 
@@ -302,7 +389,7 @@ impl QspiDriver {
     /// Polling indirect write.
     fn polling_write(
         &mut self,
-        buf: &mut [u8],
+        buf: &[u8],
         transaction: QspiTransaction,
         start_idx: usize,
     ) -> Result<(), QspiError> {
@@ -340,6 +427,28 @@ impl QspiDriver {
             None => (),
         }
 
+        Ok(())
+    }
+
+    /// DMA indirect read.
+    fn dma_read(
+        &mut self,
+        _dst_address: u32,
+        transaction: QspiTransaction,
+    ) -> Result<(), QspiError> {
+        self.setup_transaction(QspiMode::INDIRECT_READ, &transaction);
+        // TODO
+        Ok(())
+    }
+
+    /// DMA indirect write.
+    fn dma_write(
+        &mut self,
+        _src_address: u32,
+        transaction: QspiTransaction,
+    ) -> Result<(), QspiError> {
+        self.setup_transaction(QspiMode::INDIRECT_WRITE, &transaction);
+        // TODO
         Ok(())
     }
 
@@ -383,65 +492,14 @@ impl QspiDriver {
 impl Mem for QspiDriver {
     type Error = QspiError;
 
-    /// Blocking read implementation for QSPI flash.
-    fn read(&mut self, dest: &mut [u8], src: u32, len: usize) -> Result<(), QspiError> {
-        assert!(len > 0);
-        assert!(src + (len as u32) <= FlashDevice::DEVICE_MAX_ADDRESS);
-
-        let transaction = QspiTransaction {
-            iwidth: QspiWidth::SING,
-            awidth: QspiWidth::SING,
-            dwidth: QspiWidth::SING,
-            instruction: FlashDevice::CMD_MEM_READ,
-            address: Some(src & FlashDevice::DEVICE_MAX_ADDRESS),
-            dummy: 0,
-            data_len: Some(len),
-        };
-
-        self.polling_read(dest, transaction)
+    /// Blocking read implementation for QSPI flash (DMA).
+    fn read(&mut self, dst: u32, src: u32, len: usize) -> Result<(), QspiError> {
+        self.read(QspiDriverMode::DmaMode(dst), src, len)
     }
 
-    /// Blocking write implementation for QSPI flash.
-    fn write(&mut self, dest: u32, src: &mut [u8], len: usize) -> Result<(), QspiError> {
-        assert!(len > 0);
-        assert!(dest + (len as u32) <= FlashDevice::DEVICE_MAX_ADDRESS);
-
-        let mut outer_idx: usize = 0;
-        let mut curr_addr: u32 = dest;
-        let mut curr_len: usize = len;
-
-        // Constraints for writes: (1) Must be <= 256 bytes, (2) must not cross a page boundry
-        while curr_len > 0 {
-            self.write_enable()?;
-
-            let start_page = curr_addr - (curr_addr % FlashDevice::DEVICE_PAGE_SIZE);
-            let end_page = start_page + FlashDevice::DEVICE_PAGE_SIZE;
-            let size: usize = if curr_addr + (curr_len as u32) > end_page {
-                (end_page - curr_addr) as usize
-            } else {
-                curr_len
-            };
-
-            let transaction = QspiTransaction {
-                iwidth: QspiWidth::SING,
-                awidth: QspiWidth::SING,
-                dwidth: QspiWidth::SING,
-                instruction: FlashDevice::CMD_MEM_PROGRAM,
-                address: Some(curr_addr & FlashDevice::DEVICE_MAX_ADDRESS),
-                dummy: 0,
-                data_len: Some(size),
-            };
-
-            self.polling_write(src, transaction, outer_idx)?;
-
-            self.poll_status(10000)?;
-
-            curr_addr += size as u32;
-            curr_len -= size;
-            outer_idx += size;
-        }
-
-        Ok(())
+    /// Blocking write implementation for QSPI flash (DMA).
+    fn write(&mut self, dst: u32, src: u32, len: usize) -> Result<(), QspiError> {
+        self.write(dst, QspiDriverMode::DmaMode(src), len)
     }
 
     /// Blocking erase implementation for QSPI flash. This takes several seconds.
@@ -484,7 +542,7 @@ pub mod tests {
             write_buffer[i] = i as u8;
         }
 
-        match dut.sector_erase(ADDR, LEN) {
+        match dut.erase(ADDR, LEN) {
             Ok(pair) => {
                 let (num_erase, addr_erase) = pair;
                 assert!(LEN <= num_erase as usize);
@@ -492,13 +550,16 @@ pub mod tests {
             }
             Err(e) => panic!("Erase failed with error = {:?}", e),
         };
-        dut.read(&mut read_buffer, ADDR, LEN).unwrap();
+        dut.read(QspiDriverMode::PollingRead(&mut read_buffer), ADDR, LEN)
+            .unwrap();
         for i in 0..LEN {
             assert!(read_buffer[i] == 0xFF);
         }
 
-        dut.write(ADDR, &mut write_buffer, LEN).unwrap();
-        dut.read(&mut read_buffer, ADDR, LEN).unwrap();
+        dut.write(ADDR, QspiDriverMode::PollingWrite(&mut write_buffer), LEN)
+            .unwrap();
+        dut.read(QspiDriverMode::PollingRead(&mut read_buffer), ADDR, LEN)
+            .unwrap();
         for i in 0..LEN {
             if write_buffer[i] != read_buffer[i] {
                 panic!(
