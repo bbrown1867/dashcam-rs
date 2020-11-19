@@ -80,15 +80,16 @@ const APP: () = {
             pac_periph.QUADSPI,
         );
 
-        qspi.check_id().unwrap();
-        qspi::tests::test_mem(&mut qspi);
-        rprintln!("QSPI driver successfully initialized!");
-
         // Clocking: Set HSE to reflect hardware and ramp up SYSCLK to max possible speed
         let mut rcc = rcc.constrain();
         let hse_cfg = HSEClock::new(get_xtal(), HSEClockMode::Oscillator);
         let clocks = rcc.cfgr.hse(hse_cfg).sysclk(216.mhz()).freeze();
         let mut dly = Delay::new(cm_periph.SYST, clocks);
+
+        // Test QSPI
+        qspi.check_id().unwrap();
+        qspi::tests::test_mem(&mut qspi);
+        rprintln!("QSPI driver successfully initialized!");
 
         // LCD screen
         let mut display = display::config();
