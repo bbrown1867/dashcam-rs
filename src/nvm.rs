@@ -1,16 +1,16 @@
-//! Abstraction layer for write frames to non-volatile memory.
+//! Abstraction layer for reading and writing frames to non-volatile memory.
 
-use core::{fmt, slice::from_raw_parts_mut};
+use core::fmt;
 
-/// Any memory device that implements these traits will be compatible with the NVM driver.
+/// Memory device API used by the `NonVolatileMemory` driver.
 pub trait Mem {
     type Error;
 
-    /// Read `len` bytes at NVM device `src` address into `dest`.
-    fn read(&mut self, dest: &mut [u8], src: u32, len: usize) -> Result<(), Self::Error>;
+    /// Read `len` bytes at NVM address `src` address to RAM address `dst`.
+    fn read(&mut self, dst: u32, src: u32, len: usize) -> Result<(), Self::Error>;
 
-    /// Write `len` bytes in `src` to NVM device `dest` address.
-    fn write(&mut self, dest: u32, src: &mut [u8], len: usize) -> Result<(), Self::Error>;
+    /// Write `len` bytes at RAM address `src` to NVM address `dst`.
+    fn write(&mut self, dst: u32, src: u32, len: usize) -> Result<(), Self::Error>;
 
     /// Erase the NVM device, such that any section of it can be written.
     fn erase(&mut self) -> Result<(), Self::Error>;
@@ -47,16 +47,14 @@ where
 
     /// Write `size` bytes located in RAM at `src_address` to non-volatile memory.
     pub fn write(&mut self, src_address: u32, size: usize) -> Result<(), E> {
-        let src_buf: &mut [u8] = unsafe { from_raw_parts_mut(src_address as *mut u8, size) };
-        self.device.write(self.write_ptr, src_buf, size)?;
+        self.device.write(self.write_ptr, src_address, size)?;
         self.write_ptr += size as u32;
         Ok(())
     }
 
     /// Read `size` bytes located in non-volatile memory to SDRAM at `dst_address`.
     pub fn read(&mut self, dst_address: u32, size: usize) -> Result<(), E> {
-        let dst_buf: &mut [u8] = unsafe { from_raw_parts_mut(dst_address as *mut u8, size) };
-        self.device.read(dst_buf, self.read_ptr, size)?;
+        self.device.read(dst_address, self.read_ptr, size)?;
         self.read_ptr += size as u32;
         Ok(())
     }
