@@ -1,4 +1,4 @@
-//! Abstraction layer for write frames to non-volatile memory.
+//! Abstraction layer for reading and writing frames to non-volatile memory.
 
 use core::fmt;
 

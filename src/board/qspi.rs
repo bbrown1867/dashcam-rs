@@ -1,4 +1,7 @@
-//! QSPI driver for the MT25QL128ABA located on the STM32F746G Discovery Board.
+//! QSPI driver for the MT25QL128ABA located on the STM32F746G Discovery Board. This driver was
+//! written from scratch since a QSPI driver does not exist in the HAL repo at time of writing.
+//! This driver should be cleaned up and upstreamed to the HAL repo at some point. The driver
+//! takes ownership of the QUADSPI register block on initialization.
 
 use crate::nvm::Mem;
 use core::convert::TryInto;
@@ -7,7 +10,7 @@ use stm32f7xx_hal::{
     pac::{DMA2, GPIOB, GPIOD, GPIOE, QUADSPI, RCC},
 };
 
-/// Handle for the QSPI driver.
+/// The QSPI driver interface.
 pub struct QspiDriver {
     /// QSPI peripheral registers.
     qspi: QUADSPI,
@@ -438,22 +441,19 @@ impl QspiDriver {
         transaction: QspiTransaction,
     ) -> Result<(), QspiError> {
         match transaction.data_len {
-            Some(data_len) => match transaction.address {
-                Some(addr) => {
-                    assert!(
-                        (data_len as u32) % 4 == 0,
-                        "DMA transfer must be word aligned."
-                    );
-                    let num_words: u32 = (data_len as u32) / 4;
-                    let num_words: u16 = num_words.try_into().unwrap();
+            Some(data_len) => {
+                assert!(
+                    (data_len as u32) % 4 == 0,
+                    "DMA transfer must be word aligned."
+                );
+                let num_words: u32 = (data_len as u32) / 4;
+                let num_words: u16 = num_words.try_into().unwrap();
 
-                    self.setup_transaction(QspiMode::INDIRECT_READ, &transaction);
-                    qspi_dma_setup(dst_address, num_words, true);
-                    self.qspi.cr.modify(|_, w| w.dmaen().set_bit());
+                self.setup_transaction(QspiMode::INDIRECT_READ, &transaction);
+                qspi_dma_setup(dst_address, num_words, true);
+                self.qspi.cr.modify(|_, w| w.dmaen().set_bit());
 
-                    qspi_dma_is_done()
-                }
-                None => Err(QspiError::BadDriverMode),
+                qspi_dma_is_done()
             },
             None => Err(QspiError::BadDriverMode),
         }
