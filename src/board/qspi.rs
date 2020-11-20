@@ -1,7 +1,7 @@
 //! QSPI driver for the MT25QL128ABA located on the STM32F746G Discovery Board.
+
 use crate::nvm::Mem;
 use core::convert::TryInto;
-use rtt_target::rprintln;
 use stm32f7xx_hal::{
     gpio::{GpioExt, Speed},
     pac::{DMA2, GPIOB, GPIOD, GPIOE, QUADSPI, RCC},
@@ -440,7 +440,6 @@ impl QspiDriver {
             Some(data_len) => match transaction.address {
                 Some(addr) => {
                     assert!(data_len <= 65535, "Error: Transfer too large.");
-                    rprintln!("Call to DMA read from addr {:X} with size {}", dst_address, data_len);
 
                     self.setup_transaction(QspiMode::INDIRECT_READ, &transaction);
                     qspi_dma_setup(dst_address, data_len.try_into().unwrap(), true);
@@ -469,7 +468,6 @@ impl QspiDriver {
         match transaction.data_len {
             Some(data_len) => {
                 assert!(data_len <= 65535, "Error: Transfer too large.");
-                rprintln!("Call to DMA write to addr {:X} with size {}", src_address, data_len);
 
                 self.setup_transaction(QspiMode::INDIRECT_WRITE, &transaction);
                 unsafe {
@@ -489,6 +487,10 @@ impl QspiDriver {
     /// Map from QspiTransaction to QSPI registers.
     fn setup_transaction(&mut self, fmode: u8, transaction: &QspiTransaction) {
         unsafe {
+            // TODO: Wait until BUSY bit is 0
+            // Clear any prior status flags
+            self.qspi.fcr.write(|w| w.bits(0x1B));
+
             match transaction.data_len {
                 Some(len) => self.qspi.dlr.write(|w| w.bits(len as u32 - 1)),
                 None => (),
@@ -599,7 +601,6 @@ fn qspi_dma_is_done() -> Result<(), QspiError> {
             break;
         } else if dma2_regs.hisr.read().teif7().is_error()
             || dma2_regs.hisr.read().dmeif7().is_error()
-            || dma2_regs.hisr.read().feif7().is_error()
             || cnt == timeout
         {
             error = true;
@@ -608,12 +609,6 @@ fn qspi_dma_is_done() -> Result<(), QspiError> {
             cnt += 1;
         }
     }
-
-    // TODO: Debug, remove later
-    let qspi_regs = unsafe { &(*QUADSPI::ptr()) };
-    rprintln!("    HISR = {:X}", dma2_regs.hisr.read().bits());
-    rprintln!("    QSPISR = {:X}", qspi_regs.sr.read().bits());
-    rprintln!("    Count = {}", cnt);
 
     // Clear status flags
     unsafe {
