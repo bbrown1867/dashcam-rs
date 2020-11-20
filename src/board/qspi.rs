@@ -145,7 +145,8 @@ impl QspiDriver {
 
         // Configure QSPI
         unsafe {
-            // Single flash mode with a QSPI clock prescaler of 2 (216 / 2 = 108 MHz)
+            // Single flash mode with a QSPI clock prescaler of 2 (216 / 2 = 108 MHz), FIFO
+            // threshold only matters for DMA and is set to 4 to allow word sized DMA requests
             qspi.cr
                 .write_with_zero(|w| w.prescaler().bits(1).fthres().bits(3).en().set_bit());
 
@@ -439,10 +440,15 @@ impl QspiDriver {
         match transaction.data_len {
             Some(data_len) => match transaction.address {
                 Some(addr) => {
-                    assert!(data_len <= 65535, "Error: Transfer too large.");
+                    assert!(
+                        (data_len as u32) % 4 == 0,
+                        "DMA transfer must be word aligned."
+                    );
+                    let num_words: u32 = (data_len as u32) / 4;
+                    let num_words: u16 = num_words.try_into().unwrap();
 
                     self.setup_transaction(QspiMode::INDIRECT_READ, &transaction);
-                    qspi_dma_setup(dst_address, data_len.try_into().unwrap(), true);
+                    qspi_dma_setup(dst_address, num_words, true);
                     unsafe {
                         self.qspi
                             .ccr
@@ -467,7 +473,12 @@ impl QspiDriver {
     ) -> Result<(), QspiError> {
         match transaction.data_len {
             Some(data_len) => {
-                assert!(data_len <= 65535, "Error: Transfer too large.");
+                assert!(
+                    (data_len as u32) % 4 == 0,
+                    "DMA transfer must be word aligned."
+                );
+                let num_words: u32 = (data_len as u32) / 4;
+                let num_words: u16 = num_words.try_into().unwrap();
 
                 self.setup_transaction(QspiMode::INDIRECT_WRITE, &transaction);
                 unsafe {
@@ -475,7 +486,7 @@ impl QspiDriver {
                         .ccr
                         .modify(|_, w| w.fmode().bits(QspiMode::INDIRECT_WRITE));
                 }
-                qspi_dma_setup(src_address, data_len.try_into().unwrap(), false);
+                qspi_dma_setup(src_address, num_words, false);
                 self.qspi.cr.modify(|_, w| w.dmaen().set_bit());
 
                 qspi_dma_is_done()
@@ -487,7 +498,6 @@ impl QspiDriver {
     /// Map from QspiTransaction to QSPI registers.
     fn setup_transaction(&mut self, fmode: u8, transaction: &QspiTransaction) {
         unsafe {
-            // TODO: Wait until BUSY bit is 0
             // Clear any prior status flags
             self.qspi.fcr.write(|w| w.bits(0x1B));
 
@@ -566,7 +576,14 @@ fn qspi_dma_setup(address: u32, len: u16, dir: bool) {
 
         // Configure DMA controller
         dma2_regs.st[DMA_STREAM].cr.write_with_zero(|w| {
-            w.minc().set_bit().chsel().bits(DMA_CHANNEL);
+            w.minc()
+                .set_bit()
+                .chsel()
+                .bits(DMA_CHANNEL)
+                .msize()
+                .bits32()
+                .psize()
+                .bits32();
             match dir {
                 true => w.dir().peripheral_to_memory(),
                 false => w.dir().memory_to_peripheral(),
