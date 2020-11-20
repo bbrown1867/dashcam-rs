@@ -98,7 +98,8 @@ const QUADSPI_DR_ADDR: u32 = 0xA000_1000 + 0x20;
 impl QspiDriver {
     /// Initialize and configure the QSPI flash driver.
     pub fn new(rcc: &mut RCC, gpiob: GPIOB, gpiod: GPIOD, gpioe: GPIOE, qspi: QUADSPI) -> Self {
-        // Enable peripheral in RCC
+        // Enable peripherals in RCC
+        rcc.ahb1enr.modify(|_, w| w.dma2en().set_bit());
         rcc.ahb3enr.modify(|_, w| w.qspien().set_bit());
 
         // Setup GPIO pins
@@ -145,11 +146,12 @@ impl QspiDriver {
         // Configure QSPI
         unsafe {
             // Single flash mode with a QSPI clock prescaler of 2 (216 / 2 = 108 MHz), FIFO
-            // threshold is left at 1 for simplicity, but the driver could be optimized to set it
-            // to the greatest divisor of the transfer length between 1 and 32.
+            // threshold is set to 4 for DMA purposes
             qspi.cr.modify(|_, w| {
                 w.prescaler()
                     .bits(1)
+                    .fthres()
+                    .bits(0x3)
                     .fsel()
                     .clear_bit()
                     .dfm()
@@ -439,8 +441,7 @@ impl QspiDriver {
         Ok(())
     }
 
-    /// DMA indirect read. DMA controller is setup first, then the QSPI peripheral is setup, such
-    /// that the peripheral does not start clocking data in too soon.
+    /// DMA indirect read.
     fn dma_read(
         &mut self,
         dst_address: u32,
@@ -471,8 +472,7 @@ impl QspiDriver {
         }
     }
 
-    /// DMA indirect write. QSPI peripheral is setup first, then the DMA controller is setup,
-    /// such that the peripheral is ready to receive data when DMA starts.
+    /// DMA indirect write.
     fn dma_write(
         &mut self,
         src_address: u32,
@@ -488,13 +488,13 @@ impl QspiDriver {
                     "Error: Transfer too large for one shot DMA."
                 );
 
-                // Configure QSPI
-                self.qspi.cr.modify(|_, w| w.dmaen().set_bit());
-                self.setup_transaction(QspiMode::INDIRECT_WRITE, &transaction);
-
                 // Configure DMA
                 let num_words: u16 = (num_bytes / 4).try_into().unwrap();
                 qspi_dma_setup(src_address, num_words, false);
+
+                // Configure QSPI
+                self.qspi.cr.modify(|_, w| w.dmaen().set_bit());
+                self.setup_transaction(QspiMode::INDIRECT_WRITE, &transaction);
 
                 // Wait for DMA transfer to complete
                 qspi_dma_is_done()
@@ -577,10 +577,6 @@ impl Mem for QspiDriver {
 /// memory -> qspi.
 fn qspi_dma_setup(address: u32, num_words: u16, dir: bool) {
     let dma2_regs = unsafe { &(*DMA2::ptr()) };
-    let rcc_regs = unsafe { &(*RCC::ptr()) };
-
-    // Enable peripheral clock
-    rcc_regs.ahb1enr.modify(|_, w| w.dma2en().set_bit());
 
     unsafe {
         // Clear any stale interrupts
@@ -721,7 +717,7 @@ pub mod tests {
             assert!(read_buffer[i] == 0xFF);
         }
 
-        dut.write(ADDR, QspiDriverMode::PollingWrite(&mut write_buffer), LEN)
+        dut.write(ADDR, QspiDriverMode::PollingWrite(&write_buffer), LEN)
             .unwrap();
         dut.read(QspiDriverMode::PollingRead(&mut read_buffer), ADDR, LEN)
             .unwrap();
