@@ -1,7 +1,7 @@
 //! QSPI driver for the MT25QL128ABA located on the STM32F746G Discovery Board.
-use rtt_target::rprintln;
 use crate::nvm::Mem;
 use core::convert::TryInto;
+use rtt_target::rprintln;
 use stm32f7xx_hal::{
     gpio::{GpioExt, Speed},
     pac::{DMA2, GPIOB, GPIOD, GPIOE, QUADSPI, RCC},
@@ -93,7 +93,7 @@ impl QspiWidth {
 // DMA2-Stream 7-Channel 3 is used to interface with QUADSPI
 const DMA_STREAM: usize = 7;
 const DMA_CHANNEL: u8 = 3;
-const QUADSPI_DR_ADDR: u32 = 0x9000_0000 + 0x20;
+const QUADSPI_DR_ADDR: u32 = 0xA000_1000 + 0x20;
 
 impl QspiDriver {
     /// Initialize and configure the QSPI flash driver.
@@ -359,8 +359,8 @@ impl QspiDriver {
         buf: &mut [u8],
         transaction: QspiTransaction,
     ) -> Result<(), QspiError> {
-        self.setup_transaction(QspiMode::INDIRECT_READ, &transaction);
         self.qspi.cr.modify(|_, w| w.dmaen().clear_bit());
+        self.setup_transaction(QspiMode::INDIRECT_READ, &transaction);
 
         match transaction.data_len {
             Some(len) => {
@@ -401,8 +401,8 @@ impl QspiDriver {
         transaction: QspiTransaction,
         start_idx: usize,
     ) -> Result<(), QspiError> {
-        self.setup_transaction(QspiMode::INDIRECT_WRITE, &transaction);
         self.qspi.cr.modify(|_, w| w.dmaen().clear_bit());
+        self.setup_transaction(QspiMode::INDIRECT_WRITE, &transaction);
 
         match transaction.data_len {
             Some(len) => {
@@ -458,10 +458,10 @@ impl QspiDriver {
 
                 // Configure DMA
                 let num_words: u16 = (num_bytes / 4).try_into().unwrap();
-                self.qspi.cr.modify(|_, w| w.dmaen().set_bit());
                 qspi_dma_setup(dst_address, num_words, true);
 
                 // Configure QSPI
+                self.qspi.cr.modify(|_, w| w.dmaen().set_bit());
                 self.setup_transaction(QspiMode::INDIRECT_READ, &transaction);
 
                 // Wait for DMA transfer to complete
@@ -489,11 +489,11 @@ impl QspiDriver {
                 );
 
                 // Configure QSPI
+                self.qspi.cr.modify(|_, w| w.dmaen().set_bit());
                 self.setup_transaction(QspiMode::INDIRECT_WRITE, &transaction);
 
                 // Configure DMA
                 let num_words: u16 = (num_bytes / 4).try_into().unwrap();
-                self.qspi.cr.modify(|_, w| w.dmaen().set_bit());
                 qspi_dma_setup(src_address, num_words, false);
 
                 // Wait for DMA transfer to complete
@@ -579,8 +579,6 @@ fn qspi_dma_setup(address: u32, num_words: u16, dir: bool) {
     let dma2_regs = unsafe { &(*DMA2::ptr()) };
     let rcc_regs = unsafe { &(*RCC::ptr()) };
 
-    rprintln!("Setting up DMA for address {:X} num words {}, dir = {}", address, num_words, dir);
-
     // Enable peripheral clock
     rcc_regs.ahb1enr.modify(|_, w| w.dma2en().set_bit());
 
@@ -594,9 +592,6 @@ fn qspi_dma_setup(address: u32, num_words: u16, dir: bool) {
         // Configure DMA, fields set to 0 are omitted
         dma2_regs.st[DMA_STREAM].cr.write_with_zero(|w| {
             w
-                // TODO: Flow controller (0 = DMA, 1 = peripheral)
-                .pfctrl()
-                .set_bit()
                 // Memory address increment
                 .minc()
                 .set_bit()
@@ -649,17 +644,22 @@ fn qspi_dma_setup(address: u32, num_words: u16, dir: bool) {
 /// - Use interrupt handler to allow processor to sleep while waiting with WFI.
 fn qspi_dma_is_done() -> Result<(), QspiError> {
     // Wait for transfer complete
+    let timeout = 1000000;
+    let mut cnt: u32 = 0;
     let mut error: bool = false;
     let dma2_regs = unsafe { &(*DMA2::ptr()) };
     loop {
         if dma2_regs.hisr.read().tcif7().is_complete() {
             break;
-        } else if dma2_regs.hisr.read().teif7().is_error() {
+        } else if dma2_regs.hisr.read().teif7().is_error()
+            || dma2_regs.hisr.read().dmeif7().is_error()
+            || dma2_regs.hisr.read().feif7().is_error()
+            || cnt == timeout
+        {
             error = true;
             break;
-        } else if dma2_regs.hisr.read().dmeif7().is_error() {
-            error = true;
-            break;
+        } else {
+            cnt += 1;
         }
     }
 
