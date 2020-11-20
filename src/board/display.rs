@@ -1,7 +1,7 @@
 //! Display driver for the LCD screen located on the STM32F746G Discovery Board. Majority of this
 //! code was adapted from the `screen` example in the `stm32f7xx-hal` crate, except for
 //! `draw_image` which was written from scratch. The screen is for debug purposes only at the
-//! moment, the final dashcam would not have a screen.
+//! moment, the final dash cam may not have a screen.
 
 use embedded_graphics::{
     egrectangle, egtext,
