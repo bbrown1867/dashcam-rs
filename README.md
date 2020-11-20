@@ -1,7 +1,7 @@
 # dashcam-rs
 
 ## Overview
-This project is a prototype for a car dashboard camera, created to learn more about the Rust programming language and the embedded Rust ecosystem. The prototype implements the basic functionality needed by a car dashcam:
+This project is a prototype for a car dashboard camera, created to learn more about the Rust programming language and the embedded Rust ecosystem. The prototype implements the basic functionality needed by a car dash cam:
 * Capture live video, with a display for preview.
 * Buffer past video, ideally several minutes of it.
 * Save buffered video to non-volatile memory on user intervention. For example, after a car accident.
@@ -9,7 +9,7 @@ This project is a prototype for a car dashboard camera, created to learn more ab
 ## Demo
 The STM32F746G Discovery Board board is used for the hardware platform with an OV9655 CMOS camera attached.
 
-The dashcam buffers as many past frames as possible in SDRAM. On a user button press, the past frames are saved to flash memory. There is a small (~8 second) delay, as write operations for this particular flash device must be done one page at a time (256 bytes). On the next button press, the saved frames are read from flash into SDRAM and played continuously in a loop.
+The dash cam buffers as many past frames as possible in SDRAM. On a user button press, the past frames are saved to flash memory. There is a small (~8 second) delay, as write operations for this particular flash device must be done one page at a time (256 bytes). On the next button press, the saved frames are read from flash into SDRAM and played continuously in a loop.
 
 ## Embedded Rust Community
 This project relies heavily on a lot of great open-source software created by the embedded Rust community, including:
