@@ -131,9 +131,9 @@ const APP: () = {
     // Idle task.
     #[idle]
     fn idle(_: idle::Context) -> ! {
-        // TODO: Enter low-power mode with WFI?
         loop {
-            cortex_m::asm::nop();
+            // Put the core to sleep, note that RTT messages may get delayed because of this
+            cortex_m::asm::wfi();
         }
     }
 
