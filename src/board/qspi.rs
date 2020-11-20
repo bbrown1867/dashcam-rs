@@ -449,12 +449,6 @@ impl QspiDriver {
 
                     self.setup_transaction(QspiMode::INDIRECT_READ, &transaction);
                     qspi_dma_setup(dst_address, num_words, true);
-                    unsafe {
-                        self.qspi
-                            .ccr
-                            .modify(|_, w| w.fmode().bits(QspiMode::INDIRECT_READ));
-                        self.qspi.ar.write(|w| w.bits(addr));
-                    }
                     self.qspi.cr.modify(|_, w| w.dmaen().set_bit());
 
                     qspi_dma_is_done()
@@ -481,11 +475,6 @@ impl QspiDriver {
                 let num_words: u16 = num_words.try_into().unwrap();
 
                 self.setup_transaction(QspiMode::INDIRECT_WRITE, &transaction);
-                unsafe {
-                    self.qspi
-                        .ccr
-                        .modify(|_, w| w.fmode().bits(QspiMode::INDIRECT_WRITE));
-                }
                 qspi_dma_setup(src_address, num_words, false);
                 self.qspi.cr.modify(|_, w| w.dmaen().set_bit());
 
