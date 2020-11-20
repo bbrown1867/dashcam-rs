@@ -681,8 +681,8 @@ pub mod tests {
     /// Same idea as `test_mem` but using DMA. Note that transfer size must be 4 byte aligned for
     /// the way the DMA functionality was implemented in software.
     pub fn test_mem_dma(dut: &mut QspiDriver) {
-        const ADDR: u32 = 0x7000;
-        const LEN: usize = 4096;
+        const ADDR: u32 = 0x4000;
+        const LEN: usize = 640;
         let read_buffer: [u8; LEN] = [0; LEN];
         let mut write_buffer: [u8; LEN] = [0; LEN];
         for i in 0..LEN {
@@ -707,12 +707,8 @@ pub mod tests {
             assert!(read_buffer[i] == 0xFF);
         }
 
-        dut.write(
-            ADDR,
-            QspiDriverMode::DmaMode(write_buffer.as_ptr() as u32),
-            LEN,
-        )
-        .unwrap();
+        dut.write(ADDR, QspiDriverMode::PollingWrite(&write_buffer), LEN)
+            .unwrap();
         dut.read(
             QspiDriverMode::DmaMode(read_buffer.as_ptr() as u32),
             ADDR,
