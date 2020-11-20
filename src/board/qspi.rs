@@ -46,8 +46,8 @@ struct FlashDevice;
 
 impl FlashDevice {
     pub const CMD_READ_ID: u8 = 0x9F;
-    pub const CMD_MEM_READ: u8 = 0x03;
-    pub const CMD_MEM_PROGRAM: u8 = 0x02;
+    pub const CMD_MEM_READ: u8 = 0x6B;
+    pub const CMD_MEM_PROGRAM: u8 = 0x32;
     pub const CMD_BULK_ERASE: u8 = 0xC7;
     pub const CMD_SUBSECT_ERASE: u8 = 0x20;
     pub const CMD_READ_FLAG_STATUS: u8 = 0x70;
@@ -193,10 +193,10 @@ impl QspiDriver {
         let transaction = QspiTransaction {
             iwidth: QspiWidth::SING,
             awidth: QspiWidth::SING,
-            dwidth: QspiWidth::SING,
+            dwidth: QspiWidth::QUAD,
             instruction: FlashDevice::CMD_MEM_READ,
             address: Some(src & FlashDevice::DEVICE_MAX_ADDRESS),
-            dummy: 0,
+            dummy: 8,
             data_len: Some(len),
         };
 
@@ -231,7 +231,7 @@ impl QspiDriver {
             let transaction = QspiTransaction {
                 iwidth: QspiWidth::SING,
                 awidth: QspiWidth::SING,
-                dwidth: QspiWidth::SING,
+                dwidth: QspiWidth::QUAD,
                 instruction: FlashDevice::CMD_MEM_PROGRAM,
                 address: Some(curr_addr & FlashDevice::DEVICE_MAX_ADDRESS),
                 dummy: 0,
