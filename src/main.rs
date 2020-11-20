@@ -89,7 +89,6 @@ const APP: () = {
         // Test QSPI
         qspi.check_id().unwrap();
         qspi::tests::test_mem(&mut qspi);
-        rprintln!("First test passed!");
         qspi::tests::test_mem_dma(&mut qspi);
         rprintln!("QSPI driver successfully initialized!");
 
