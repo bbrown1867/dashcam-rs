@@ -132,11 +132,12 @@ const APP: () = {
     #[idle]
     fn idle(_: idle::Context) -> ! {
         loop {
-            // Put the core to sleep, note that RTT messages may get delayed
-            #[cfg(build = "release")]
+            // Release mode: Put the core to sleep, note that RTT messages may get delayed
+            #[cfg(not(debug_assertions))]
             cortex_m::asm::wfi();
 
-            // In debug mode just do a spin loop here such that RTT messages keep coming on time
+            // Debug mode: Do a spin-loop here, want to see all RTT messages
+            #[cfg(debug_assertions)]
             cortex_m::asm::nop();
         }
     }
