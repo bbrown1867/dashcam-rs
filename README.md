@@ -38,7 +38,7 @@ The primary image data path is outlined in red.
 ## Limitations and Next Steps
 
 ### Memory
-The biggest limitation with this prototype is the amount of memory, both volatile and non-volatile. The SDRAM chip used for frame buffering is 8 MB and the QSPI flash chip for saving frames is 16 MB. As a result, it can only buffer around 2-3 seconds of video. As described in detail in this [issue](https://github.com/bbrown1867/dashcam-rs/issues/2), somewhere between 275 MB - 1.3 GB of RAM is needed to buffer a few minutes of video. For non-volatile memory (flash), probably at least 2x to 10x of the RAM size is desired to store multiple clips during a drive. To increase both memories, a new hardware platform is needed. Since the SDRAM chip is connected via a high-speed interface, a custom PCB would be needed.
+The biggest limitation with this prototype is the amount of memory, both volatile and non-volatile. The SDRAM chip used for frame buffering is 8 MB and the QSPI flash chip for saving frames is 16 MB. As a result, it can only buffer around 2-3 seconds of video. With QVGA resolution, RGB565 color format, and 30 fps, somewhere between 275 MB - 1.3 GB of RAM is needed to buffer a few minutes of video. For non-volatile memory (flash), probably at least 2x to 10x of the RAM size is desired to store multiple clips during a drive. To increase both memories, a new hardware platform is needed. Since the SDRAM chip is connected via a high-speed interface, a custom PCB would be needed.
 
 There are a couple other ways to resolve this problem:
 * Reduce resolution and frame rate.
