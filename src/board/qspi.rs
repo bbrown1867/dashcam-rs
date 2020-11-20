@@ -31,10 +31,6 @@ pub enum QspiDriverMode<'a> {
 pub enum QspiError {
     /// Flash device ID mismatch.
     ReadDeviceId,
-    /// Timeout during a polling transaction.
-    Timeout,
-    /// Timeout waiting for a write/erase to complete.
-    StatusTimeout,
     /// Invalid `QspiDriverMode` used in function.
     BadDriverMode,
     /// Error during DMA transfer.
@@ -248,7 +244,7 @@ impl QspiDriver {
                 }
             };
 
-            self.poll_status(10000)?;
+            self.poll_status()?;
 
             curr_addr += size as u32;
             curr_len -= size;
@@ -289,26 +285,20 @@ impl QspiDriver {
             num_erased_bytes += FlashDevice::DEVICE_SUBSECTOR_SIZE;
             addr += FlashDevice::DEVICE_SUBSECTOR_SIZE;
 
-            self.poll_status(10000)?;
+            self.poll_status()?;
         }
 
         Ok((num_erased_bytes, start_addr))
     }
 
     /// Poll the status register until not busy. Necessary after write/erase operations.
-    fn poll_status(&mut self, timeout: u32) -> Result<(), QspiError> {
-        let mut cnt = 0;
+    fn poll_status(&mut self) -> Result<(), QspiError> {
         let mut status = 0;
         while status & 0x80 == 0 {
             status = match self.read_flag_status() {
                 Ok(status) => status,
                 Err(e) => return Err(e),
             };
-
-            cnt += 1;
-            if cnt == timeout {
-                return Err(QspiError::StatusTimeout);
-            }
         }
 
         Ok(())
@@ -359,8 +349,6 @@ impl QspiDriver {
 
         match transaction.data_len {
             Some(len) => {
-                let timeout = 10000;
-                let mut cnt: u32 = 0;
                 let mut idx: usize = 0;
                 while idx < len {
                     // Check if there are bytes in the FIFO
@@ -374,11 +362,6 @@ impl QspiDriver {
                         for i in 0..num_unpack {
                             buf[idx] = ((word & (0xFF << i * 8)) >> i * 8).try_into().unwrap();
                             idx += 1;
-                        }
-                    } else {
-                        cnt += 1;
-                        if cnt == timeout {
-                            return Err(QspiError::Timeout);
                         }
                     }
                 }
@@ -401,8 +384,6 @@ impl QspiDriver {
 
         match transaction.data_len {
             Some(len) => {
-                let timeout = 10000;
-                let mut cnt: u32 = 0;
                 let mut idx: usize = 0;
                 while idx < len {
                     // Check if the FIFO is empty
@@ -419,11 +400,6 @@ impl QspiDriver {
                         // Write a word
                         unsafe {
                             self.qspi.dr.write(|w| w.data().bits(word));
-                        }
-                    } else {
-                        cnt += 1;
-                        if cnt == timeout {
-                            return Err(QspiError::Timeout);
                         }
                     }
                 }
@@ -553,7 +529,7 @@ impl Mem for QspiDriver {
 
         let mut dummy = [0];
         self.polling_read(&mut dummy, transaction)?;
-        self.poll_status(1000000)
+        self.poll_status()
     }
 }
 
@@ -598,8 +574,6 @@ fn qspi_dma_setup(address: u32, len: u16, dir: bool) {
 /// Block until DMA transfer is complete. Disable the DMA controller after the transfer finishes.
 fn qspi_dma_is_done() -> Result<(), QspiError> {
     // Wait for transfer complete
-    let timeout = 1000000;
-    let mut cnt: u32 = 0;
     let mut error: bool = false;
     let dma2_regs = unsafe { &(*DMA2::ptr()) };
     loop {
@@ -607,12 +581,9 @@ fn qspi_dma_is_done() -> Result<(), QspiError> {
             break;
         } else if dma2_regs.hisr.read().teif7().is_error()
             || dma2_regs.hisr.read().dmeif7().is_error()
-            || cnt == timeout
         {
             error = true;
             break;
-        } else {
-            cnt += 1;
         }
     }
 

@@ -4,6 +4,10 @@ version = "0.4.0"
 authors = ["Ben Brown <bbrown1867@gmail.com>"]
 edition = "2018"
 
+[profile.release]
+# Don't optimize too aggressively, messes up application timing
+opt-level = 1
+
 [dependencies]
 # Device support
 cortex-m = "0.6.0"
@@ -19,7 +23,7 @@ rtt-target = { version = "0.2.2", features = ["cortex-m"] }
 embedded-hal = "0.2.3"
 stm32-fmc = { version = "0.2.0", features = ["sdram"] }
 
-# TODO: Use version 0.3.0 when it happens, update commit hash as needed
+# Use version 0.3.0 when it is released, for now update commit hash as needed
 [dependencies.stm32f7xx-hal]
 git = "https://github.com/stm32-rs/stm32f7xx-hal"
 rev = "690a898327b27ecd236ae6b8d9ba395eb889bc38"
