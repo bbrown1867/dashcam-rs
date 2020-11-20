@@ -707,8 +707,12 @@ pub mod tests {
             assert!(read_buffer[i] == 0xFF);
         }
 
-        dut.write(ADDR, QspiDriverMode::PollingWrite(&write_buffer), LEN)
-            .unwrap();
+        dut.write(
+            ADDR,
+            QspiDriverMode::DmaMode(write_buffer.as_ptr() as u32),
+            LEN,
+        )
+        .unwrap();
         dut.read(
             QspiDriverMode::DmaMode(read_buffer.as_ptr() as u32),
             ADDR,
