@@ -454,7 +454,7 @@ impl QspiDriver {
                 self.qspi.cr.modify(|_, w| w.dmaen().set_bit());
 
                 qspi_dma_is_done()
-            },
+            }
             None => Err(QspiError::BadDriverMode),
         }
     }
