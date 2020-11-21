@@ -7,7 +7,7 @@ This project is a prototype for a car dashboard camera, created to learn more ab
 * Save buffered video to non-volatile memory on user intervention. For example, after a car accident.
 
 ## Demo
-The STM32F746G Discovery Board is used for the hardware platform with an OV9655 CMOS camera attached.
+The STM32F746G Discovery Board is used for the hardware platform with an OV9655 CMOS camera attached. The demo uses QQVGA resolution (160x120), 30 fps, and RGB565 color format.
 
 The dash cam buffers as many past frames as possible in SDRAM. On the first button press, the past frames are saved to flash memory. There is a small (~8 second) delay, as write operations for this particular flash device must be done one page (256 bytes) at a time. On the second button press, the saved frames are read from flash into SDRAM and played continuously in a loop.
 
@@ -38,7 +38,7 @@ The primary image data path is outlined in red.
 ## Limitations and Next Steps
 
 ### Memory
-The biggest limitation with this prototype is the amount of memory, both volatile and non-volatile. The SDRAM chip used for frame buffering is 8 MB and the QSPI flash chip for saving frames is 16 MB. As a result, it can only buffer around 2-3 seconds of video. With QVGA resolution, RGB565 color format, and 30 fps, somewhere between 275 MB - 1.3 GB of RAM is needed to buffer a few minutes of video. For non-volatile memory (flash), probably at least 2x to 10x of the RAM size is desired to store multiple clips during a drive. To increase both memories, a new hardware platform is needed. Since the SDRAM chip is connected via a high-speed interface, a custom PCB would be needed.
+The biggest limitation with this prototype is the amount of memory, both volatile and non-volatile. The SDRAM chip used for frame buffering is 8 MB and the QSPI flash chip for saving frames is 16 MB. As a result, it can only buffer several seconds of video. With QVGA resolution (320x240), RGB565 color format, and 30 fps, somewhere between 275 MB - 1.3 GB of RAM is needed to buffer a few minutes of video. For non-volatile memory (flash), probably at least 2x to 10x of the RAM size is desired to store multiple clips during a drive. To increase both memories, a new hardware platform is needed. Since the SDRAM chip is connected via a high-speed interface, a custom PCB would be needed.
 
 There are a couple other ways to resolve this problem:
 * Reduce resolution and frame rate.

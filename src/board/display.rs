@@ -102,14 +102,14 @@ pub fn draw_message(display: &mut screen::DiscoDisplay<u16>, msg: &str) {
     egrectangle!(
         top_left = (0, 0),
         bottom_right = (479, 271),
-        style = primitive_style!(fill_color = Rgb565::BLUE)
+        style = primitive_style!(fill_color = Rgb565::BLACK)
     )
     .draw(display)
     .ok();
 
     egtext!(
         text = msg,
-        top_left = (105, 105),
+        top_left = (200, 200),
         style = text_style!(font = Font6x8, text_color = RgbColor::WHITE)
     )
     .draw(display)

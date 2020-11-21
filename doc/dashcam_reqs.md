@@ -29,7 +29,7 @@
     * DCIM driver does not currently exist in the [Rust HAL for STM32F7](https://github.com/stm32-rs/stm32f7xx-hal). Also the DMA driver in the Rust HAL does not support DCIM.
     * SCCB portion should use `embedded-hal` traits to be easily portable.
     * Any HAL improvements will be done in [my fork](https://github.com/bbrown1867/stm32f7xx-hal) and merged into upstream if it makes sense.
-    * Initial goal shall be to capture a low-quality (QVGA, RGB565) image into SRAM (320x240x2 = 153.6 KB).
+    * Initial goal shall be to capture a low-quality image into SRAM.
 2. Continuous capture and frame buffering.
     * The software will need to be extended to continuously capture frames and store in a frame buffer.
     * Circular programming of DMA controller.
