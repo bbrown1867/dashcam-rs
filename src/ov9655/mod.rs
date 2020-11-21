@@ -15,13 +15,13 @@ use stm32f7xx_hal::{
     time::U32Ext,
 };
 
-/// Number of horizontal pixels for QVGA resolution.
-pub const FRAME_WIDTH: u16 = 320;
+/// Number of horizontal pixels for QQVGA resolution.
+pub const FRAME_WIDTH: u16 = 160;
 
-/// Number of vertical pixels for QVGA resolution.
-pub const FRAME_HEIGHT: u16 = 240;
+/// Number of vertical pixels for QQVGA resolution.
+pub const FRAME_HEIGHT: u16 = 120;
 
-/// Number of total bytes in one QVGA frame using RGB565 format (2 pixels per byte).
+/// Number of total bytes in one frame using RGB565 format (2 pixels per byte).
 pub const FRAME_SIZE: u32 = (FRAME_WIDTH as u32) * (FRAME_HEIGHT as u32) * 2;
 
 /// Time between frames in milliseconds
@@ -92,7 +92,7 @@ pub fn handle_dma_done() -> bool {
     return parallel::dma2_isr();
 }
 
-/// Given an empty `RegMap`, fill out the register values for QVGA (320x240) resolution with
+/// Given an empty `RegMap`, fill out the register values for QQVGA (160x120) resolution with
 /// RGB565.
 fn get_config(reg_vals: &mut RegMap) {
     // 30 fps VGA with VarioPixel and RGB output data format
@@ -108,10 +108,10 @@ fn get_config(reg_vals: &mut RegMap) {
     reg_vals.insert(0x41, 0x01).unwrap();
 
     // Reduce resolution by half both vertically and horizontally (640x480 --> 320x240)
-    reg_vals.insert(0x72, 0x11).unwrap();
+    reg_vals.insert(0x72, 0x22).unwrap();
 
-    // Pixel clock output frequency adjustment (note: default value is 0x01)
-    reg_vals.insert(0x73, 0x01).unwrap();
+    // Pixel clock output frequency adjustment
+    reg_vals.insert(0x73, 0x02).unwrap();
 
     // Horizontal and vertical scaling
     reg_vals.insert(0x74, 0x10).unwrap();
@@ -145,7 +145,7 @@ fn get_config(reg_vals: &mut RegMap) {
     reg_vals.insert(0x2a, 0x00).unwrap();
     reg_vals.insert(0x2b, 0x00).unwrap();
     reg_vals.insert(0x2c, 0x08).unwrap();
-    reg_vals.insert(0x32, 0x12).unwrap();
+    reg_vals.insert(0x32, 0xa4).unwrap();
     reg_vals.insert(0x33, 0x00).unwrap();
     reg_vals.insert(0x34, 0x3f).unwrap();
     reg_vals.insert(0x35, 0x00).unwrap();
@@ -155,7 +155,7 @@ fn get_config(reg_vals: &mut RegMap) {
     reg_vals.insert(0x3a, 0xcc).unwrap();
     reg_vals.insert(0x3b, 0x04).unwrap();
     reg_vals.insert(0x3d, 0x99).unwrap();
-    reg_vals.insert(0x3e, 0x02).unwrap();
+    reg_vals.insert(0x3e, 0x0e).unwrap();
     reg_vals.insert(0x3f, 0xc1).unwrap();
     reg_vals.insert(0x42, 0xc0).unwrap();
     reg_vals.insert(0x43, 0x0a).unwrap();
@@ -253,7 +253,7 @@ fn get_config(reg_vals: &mut RegMap) {
     reg_vals.insert(0xc2, 0x01).unwrap();
     reg_vals.insert(0xc3, 0x4e).unwrap();
     reg_vals.insert(0xc6, 0x05).unwrap();
-    reg_vals.insert(0xc7, 0x81).unwrap();
+    reg_vals.insert(0xc7, 0x82).unwrap();
     reg_vals.insert(0xc9, 0xe0).unwrap();
     reg_vals.insert(0xca, 0xe8).unwrap();
     reg_vals.insert(0xcb, 0xf0).unwrap();

@@ -94,7 +94,7 @@ const APP: () = {
 
         // LCD screen
         let mut display = display::config();
-        display::draw_message(&mut display, "Hello Dashcam!");
+        display::draw_message(&mut display, "   Hello Dashcam!");
 
         // SDRAM
         let (sdram_ptr, sdram_size) = sdram::init(&clocks, &mut dly);
