@@ -107,7 +107,7 @@ fn get_config(reg_vals: &mut RegMap) {
     // Scale down ON
     reg_vals.insert(0x41, 0x01).unwrap();
 
-    // Reduce resolution by half both vertically and horizontally (640x480 --> 320x240)
+    // Reduce resolution by a quarter both vertically and horizontally (640x480 --> 160x120)
     reg_vals.insert(0x72, 0x22).unwrap();
 
     // Pixel clock output frequency adjustment
