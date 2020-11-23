@@ -15,8 +15,8 @@ The dash cam buffers as many past frames as possible in SDRAM. On the first butt
 
 ### Conclusions
 Overall, creating this prototype with Rust was much more enjoyable than C/C++. Here are my big picture takeaways:
-* __Language__: A lot of ink has been spilled about the benefits of the borrow checker and the ownership model in Rust, but what I enjoyed the most about the language were more minor features like `Option`, `Result<T, E>`, closures, and `match` statements. They made the code cleaner and process of writing code more ergonomic.
-* __Ecosystem__: The abstractions built by the embedded Rust community for peripheral access (PACs) are hugely helpful. Being able to set or clear a single bit in a register with a series of zero-cost function calls is extremely useful in embedded software.
+* __Language__: A lot of ink has been spilled about the benefits of the borrow checker and the ownership model in Rust, but what I enjoyed the most about the language was more minor features like `Option`, `Result<T, E>`, closures, and `match` statements. They made the code cleaner and process of writing code more ergonomic.
+* __Ecosystem__: The abstractions built by the embedded Rust community for peripheral access (PACs) are hugely helpful. Being able to set or clear a single bit in a register with a series of zero-cost function calls is very useful in embedded software.
 * __Tooling__: The tooling (`cargo`, `probe-rs`, `rust-analyzer`, etc.) is miles ahead of other languages I've used for embedded. Being able to download dependencies, build code, flash the target, and open a debug window in a single command (`cargo embed`) that works _out of the box_ is amazing!
 * __Device support__: In the end your choice to use embedded Rust for a project may come down to device support. The STM32 line is well supported by the community, but others may not be. Engagement from device manufacturers will be crucial in making Rust grow in embedded.
 
