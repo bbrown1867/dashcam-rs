@@ -11,7 +11,16 @@ The STM32F746G Discovery Board is used for the hardware platform with an OV9655 
 
 The dash cam buffers as many past frames as possible in SDRAM. On the first button press, the past frames are saved to flash memory. There is a small (~8 second) delay, as write operations for this particular flash device must be done one page (256 bytes) at a time. On the second button press, the saved frames are read from flash into SDRAM and played continuously in a loop.
 
-## Embedded Rust Community
+## Embedded Rust
+
+### Conclusions
+Overall, creating this prototype with Rust was much more enjoyable than C/C++. Here are my big picture takeaways:
+* __Language__: A lot of ink has been spilled about the benefits of the borrow checker and the ownership model in Rust, but what I enjoyed the most about the language were more minor features like `Option`, `Result<T, E>`, closures, and `match` statements. They made the code cleaner and process of writing code more ergonomic.
+* __Ecosystem__: The abstractions built by the embedded Rust community for peripheral access (PACs) are hugely helpful. Being able to set or clear a single bit in a register with a series of zero-cost function calls is extremely useful in embedded software.
+* __Tooling__: The tooling (`cargo`, `probe-rs`, `rust-analyzer`, etc.) is miles ahead of other languages I've used for embedded. Being able to download dependencies, build code, flash the target, and open a debug window in a single command (`cargo embed`) that works _out of the box_ is amazing!
+* __Device support__: In the end your choice to use embedded Rust for a project may come down to device support. The STM32 line is well supported by the community, but others may not be. Engagement from device manufacturers will be crucial in making Rust grow in embedded.
+
+### Community
 This project relies heavily on a lot of great open-source software created by the embedded Rust community, including:
 * [RTIC](https://github.com/rtic-rs/cortex-m-rtic/): A small concurrency framework for Cortex-M processors. Sort of like a mini-RTOS.
 * [cortex-m](https://github.com/rust-embedded/cortex-m) and [cortex-m-rt](https://github.com/rust-embedded/cortex-m-rt): Low-level device support for Cortex-M processors.
@@ -28,16 +37,18 @@ Hopefully, this project adds the following contributions to the embedded Rust co
         * TODO: Upstream this code to `stm32f7xx-hal`.
     * Device driver for the MT25QL128ABA flash memory chip.
 
-## Hardware Architecture
+## Project Details
+
+### Hardware Architecture
 The primary image data path is outlined in red.
 ![](img/design.jpg)
 
-## Software Architecture
+### Software Architecture
 ![](img/software.jpg)
 
-## Limitations and Next Steps
+### Limitations and Next Steps
 
-### Memory
+#### Memory
 The biggest limitation with this prototype is the amount of memory, both volatile and non-volatile. The SDRAM chip used for frame buffering is 8 MB and the QSPI flash chip for saving frames is 16 MB. As a result, it can only buffer several seconds of video. With QVGA resolution (320x240), RGB565 color format, and 30 fps, somewhere between 275 MB - 1.3 GB of RAM is needed to buffer a few minutes of video. For non-volatile memory (flash), probably at least 2x to 10x of the RAM size is desired to store multiple clips during a drive. To increase both memories, a new hardware platform is needed. Since the SDRAM chip is connected via a high-speed interface, a custom PCB would be needed.
 
 There are a couple other ways to resolve this problem:
@@ -49,9 +60,5 @@ There are a couple other ways to resolve this problem:
     * Writing to the current flash memory device is very slow, so a different one may be needed.
     * This would be more work software and more application logic. Overall this solution is not as elegant as the current implementation.
 
-### Filesystem
+#### Filesystem
 Currently non-volatile memory is accessed using raw data and addresses. To support saving and organizing multiple video clips, a filesystem is most likely needed. A stable, mature embedded filesystem may not exist in the embedded Rust ecosystem, so this may be a case for migrating to an embedded Linux platform rather than bare-metal.
-
-## Further Reading
-* [Original conceptual design](doc/dashcam_design.md)
-* [Original requirements](doc/dashcam_reqs.md)
