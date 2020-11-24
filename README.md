@@ -7,7 +7,7 @@ This project is a prototype for a car dashboard camera, created to learn more ab
 * Save buffered video to non-volatile memory on user intervention. For example, after a car accident.
 
 ## Demo
-The STM32F746G Discovery Board is used for the hardware platform with an OV9655 CMOS camera attached. The demo uses QVGA resolution (320x240), 30 fps, and RGB565 color format. See [img/demo.mp4](img/demo.mp4) for a higher resolution video.
+The STM32F746G Discovery Board is used for the hardware platform with an OV9655 CMOS camera attached. The demo uses QVGA resolution (320x240), 30 fps, and RGB565 color format.
 
 ![](img/demo.gif)
 
@@ -16,7 +16,7 @@ The dash cam buffers as many past frames as possible in SDRAM. On the first butt
 ## Embedded Rust
 
 ### Conclusions
-Overall, creating this prototype with Rust was much more enjoyable than C/C++. Here are my big picture takeaways:
+Overall, creating this prototype with Rust was much more enjoyable than similar projects I've done with C/C++. Here are the main takeaways:
 * __Language__: A lot of ink has been spilled about the benefits of the borrow checker and the ownership model in Rust, but what I enjoyed the most about the language was more minor features like `Option`, `Result<T, E>`, closures, and `match` statements. They made the code cleaner and process of writing code more ergonomic.
 * __Ecosystem__: The abstractions built by the embedded Rust community for peripheral access (PACs) are hugely helpful. Being able to set or clear a single bit in a register with a series of zero-cost function calls is very useful in embedded software.
 * __Tooling__: The tooling (`cargo`, `probe-rs`, `rust-analyzer`, etc.) is miles ahead of other languages I've used for embedded. Being able to download dependencies, build code, flash the target, and open a debug window in a single command (`cargo embed`) that works _out of the box_ is amazing!
