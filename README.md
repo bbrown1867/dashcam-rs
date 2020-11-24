@@ -7,7 +7,8 @@ This project is a prototype for a car dashboard camera, created to learn more ab
 * Save buffered video to non-volatile memory on user intervention. For example, after a car accident.
 
 ## Demo
-The STM32F746G Discovery Board is used for the hardware platform with an OV9655 CMOS camera attached. The demo uses QQVGA resolution (160x120), 30 fps, and RGB565 color format.
+The STM32F746G Discovery Board is used for the hardware platform with an OV9655 CMOS camera attached. The demo uses QVGA resolution (320x240), 30 fps, and RGB565 color format.
+![](img/demo.gif)
 
 The dash cam buffers as many past frames as possible in SDRAM. On the first button press, the past frames are saved to flash memory. There is a small (~8 second) delay, as write operations for this particular flash device must be done one page (256 bytes) at a time. On the second button press, the saved frames are read from flash into SDRAM and played continuously in a loop.
 
