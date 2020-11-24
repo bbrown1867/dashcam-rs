@@ -8,6 +8,10 @@ edition = "2018"
 # Don't optimize too aggressively, messes up application timing
 opt-level = 1
 
+[features]
+# Specify QQVGA with the flag: "--features qqvga", otherwise QVGA is used
+qqvga = []
+
 [dependencies]
 # Device support
 cortex-m = "0.6.0"
