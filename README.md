@@ -55,12 +55,12 @@ The biggest limitation with this prototype is the amount of memory, both volatil
 
 There are a couple other ways to resolve this problem:
 * Reduce resolution and frame rate.
-    * This is not very desirable since resolution is already quite low.
+    * This is partially implemented with the `qqvga` feature. However that only allows around 7 seconds of video to be buffered and the resolution is very small (160x120).
     * The OV9655 only supports 15 or 30 fps, so manual downsampling may be required.
 * Change the buffering methodology.
     * Buffer only a few seconds, then write to flash/non-volatile memory continuously. Saving a video is simply updating metadata and files in non-volatile memory.
     * Writing to the current flash memory device is very slow, so a different one may be needed.
-    * This would be more work software and more application logic. Overall this solution is not as elegant as the current implementation.
+    * This would be more work for software and more application logic. Overall this solution is not as elegant as the current implementation.
 
 #### Filesystem
 Currently non-volatile memory is accessed using raw data and addresses. To support saving and organizing multiple video clips, a filesystem is most likely needed. A stable, mature embedded filesystem may not exist in the embedded Rust ecosystem, so this may be a case for migrating to an embedded Linux platform rather than bare-metal.
