@@ -36,8 +36,8 @@ Hopefully, this project adds the following contributions to the embedded Rust co
     * Parallel interface driver for the STM32F7 using DCIM and DMA, including live video capture with ping-pong DMA.
 * [QSPI flash driver](src/board/qspi.rs)
     * A HAL driver for the QSPI peripheral on the STM32F7. Supports indirect mode with polling or DMA.
-        * [Upstreamed to `stm32f7xx-hal`](https://github.com/stm32-rs/stm32f7xx-hal/pull/107).
     * Device driver for the MT25QL128ABA flash memory chip.
+    * [Upstreamed to `stm32f7xx-hal`](https://github.com/stm32-rs/stm32f7xx-hal/pull/107).
 
 ## Project Details
 
